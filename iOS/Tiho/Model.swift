@@ -116,7 +116,7 @@ enum Vault {
         if path.hasPrefix("inbox/") {
             req.setValue(UserDefaults.standard.bool(forKey:"pushEnabled") ? PushRegistration.token : "off",forHTTPHeaderField:"X-Push-Device")
         }
-        req.timeoutInterval=path.hasPrefix("chunk/") || path.hasPrefix("piece/") ? 25:12
+        req.timeoutInterval=75
         req.httpMethod=body == nil ? "GET":"POST"; req.httpBody=body
         req.setValue("application/json",forHTTPHeaderField:"Content-Type")
         req.setValue(relayAccessKey,forHTTPHeaderField:"X-Tiho-Access")
@@ -369,7 +369,7 @@ enum Vault {
             return
         }
         do {
-            let inbox: Inbox=try await request("inbox/\(account.id)",query:[URLQueryItem(name:"chunked",value:"1"),URLQueryItem(name:"peer",value:peer.id)])
+            let inbox: Inbox=try await request("inbox/\(account.id)",query:[URLQueryItem(name:"small",value:"1"),URLQueryItem(name:"chunked",value:"1"),URLQueryItem(name:"peer",value:peer.id)])
             peerOnline=inbox.peerOnline
             if inbox.messages.isEmpty {return}
             var ids=[String](),changed=false
@@ -377,13 +377,13 @@ enum Vault {
                 if state.messages.contains(where:{$0.id==envelope.id}) {ids.append(envelope.id);continue}
                 var body=envelope.body
                 if let count=envelope.parts {
-                    guard (1...2048).contains(count) else {continue}
+                    guard (1...3584).contains(count) else {continue}
                     var pieces=downloads[envelope.id] ?? [:]
                     let missing=(0..<count).filter {pieces[$0]==nil}.prefix(4)
                     let fetched=await withTaskGroup(of:(Int,String?).self) {group in
                         for index in missing {
                             group.addTask { @MainActor in
-                                let part: DownloadPiece?=try? await self.request("piece/\(account.id)",query:[URLQueryItem(name:"message",value:envelope.id),URLQueryItem(name:"index",value:String(index))])
+                                let part: DownloadPiece?=try? await self.request("piece/\(account.id)",query:[URLQueryItem(name:"small",value:"1"),URLQueryItem(name:"message",value:envelope.id),URLQueryItem(name:"index",value:String(index))])
                                 return (index,part?.body)
                             }
                         }

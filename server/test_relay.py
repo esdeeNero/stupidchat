@@ -38,6 +38,11 @@ class RelayTests(unittest.TestCase):
         self.assertEqual(inbox,[{'id':'pieces','body':'','parts':len(pieces)}])
         restored=''.join(self.call('piece/'+a['id']+'?message=pieces&index='+str(i),token=a['token'])['body'] for i in range(len(pieces)))
         self.assertEqual(restored,text)
+        compact=self.call('inbox/'+a['id']+'?chunked=1&small=1',token=a['token'])['messages'][0]
+        self.assertEqual(compact['parts'],(len(text)+8191)//8192)
+        blocks=[self.call('piece/'+a['id']+'?small=1&message=pieces&index='+str(i),token=a['token'])['body'] for i in range(compact['parts'])]
+        self.assertLessEqual(max(map(len,blocks)),8192)
+        self.assertEqual(''.join(blocks),text)
         self.call('ack/'+a['id'],{'ids':['pieces']},a['token'])
         result=self.call('chunk/'+a['id'],{'id':'pieces','index':0,'total':len(pieces),'body':pieces[0]})
         self.assertTrue(result['complete'])

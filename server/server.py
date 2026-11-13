@@ -52,6 +52,7 @@ def dispatch(db,action,ident,method,payload,query,token):
         return 200,{'ok':True,'complete':True}
     if not secrets.compare_digest(account[0],hashlib.sha256(token.encode()).hexdigest()):return 401,{'error':'Unauthorized'}
     if action=='session' and method=='GET':return 200,{'ok':True}
+    download_size=8192 if query.get('small')==['1'] else PIECE
     if action=='inbox' and method=='GET':
         device=query.get('_device')
         if device=='off':db.execute('DELETE FROM devices WHERE recipient=?',(ident,))
@@ -65,13 +66,13 @@ def dispatch(db,action,ident,method,payload,query,token):
         chunked=query.get('chunked')==['1']
         order='length(body),created' if chunked else 'created'
         rows=db.execute('SELECT id,body FROM messages WHERE recipient=? ORDER BY '+order+' LIMIT 10',(ident,)).fetchall()
-        return 200,{'peerOnline':online,'messages':[{'id':mid,'body':'','parts':(len(body)+PIECE-1)//PIECE} if chunked and len(body)>PIECE else {'id':mid,'body':body} for mid,body in rows]}
+        return 200,{'peerOnline':online,'messages':[{'id':mid,'body':'','parts':(len(body)+download_size-1)//download_size} if chunked and len(body)>download_size else {'id':mid,'body':body} for mid,body in rows]}
     if action=='piece' and method=='GET':
         mid=query['message'][0];index=int(query['index'][0])
         row=db.execute('SELECT body FROM messages WHERE id=? AND recipient=?',(mid,ident)).fetchone()
         if not row:return 404,{'error':'Unknown envelope'}
-        if not 0<=index<(len(row[0])+PIECE-1)//PIECE:return 400,{'error':'Invalid piece index'}
-        return 200,{'body':row[0][index*PIECE:(index+1)*PIECE]}
+        if not 0<=index<(len(row[0])+download_size-1)//download_size:return 400,{'error':'Invalid piece index'}
+        return 200,{'body':row[0][index*download_size:(index+1)*download_size]}
     if action=='ack' and method=='POST':
         for mid in payload.get('ids',[])[:100]:
             if db.execute('SELECT 1 FROM messages WHERE id=? AND recipient=?',(mid,ident)).fetchone():
