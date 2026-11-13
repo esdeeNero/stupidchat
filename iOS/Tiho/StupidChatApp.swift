@@ -318,7 +318,7 @@ struct SettingsView: View {
                 Section {
                     HStack(spacing:14) {
                         Image("StupidLogo").resizable().frame(width:46,height:46).clipShape(RoundedRectangle(cornerRadius:11))
-                        VStack(alignment:.leading,spacing:4) {Text("stupidchat").font(.headline);Text("Версия 0.3 · made for your people").font(.caption).foregroundStyle(.secondary)}
+                        VStack(alignment:.leading,spacing:4) {Text("stupidchat").font(.headline);Text("Версия 0.3.1 · made for your people").font(.caption).foregroundStyle(.secondary)}
                     }.padding(.vertical,4)
                     Text("Получение работает при открытом приложении. Push-уведомления пока не подключены.").font(.caption).foregroundStyle(.secondary)
                 }
@@ -382,6 +382,10 @@ struct ConnectionView: View {
                 Section("Сервер") {
                     TextField("https://адрес-сервера",text:$serverAddress).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("Ключ доступа к частному серверу",text:$accessKey).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    if Deployment.discoveryURL != nil {
+                        Toggle("Автоматически находить сервер",isOn:Binding(get:{chat.state.automaticEndpoint != false},set:{chat.state.automaticEndpoint=$0;chat.persist()}))
+                        Button("Найти актуальный адрес") {Task {do {_ = try await chat.refreshEndpoint(force:true);serverAddress=chat.state.server} catch {chat.error="Не удалось получить подписанный адрес: \(error.localizedDescription)"}}}.disabled(chat.busy)
+                    }
                     Button("Проверить и сохранить") {Task {await configure()}}.disabled(chat.busy)
                     LabeledContent("Состояние",value:chat.connection).font(.caption)
                     if chat.state.account == nil {Button("Создать мой адрес") {Task {await configure();if chat.error.isEmpty {await chat.register()}}}.disabled(chat.busy)}
@@ -399,7 +403,8 @@ struct ConnectionView: View {
                 }
                 Section {NavigationLink("Проверка шифрования") {SecurityView()}}
             }.navigationTitle("Начать общение").navigationBarTitleDisplayMode(.inline)
-        .onAppear {serverAddress=chat.state.server;accessKey=chat.state.relayAccessKey ?? Deployment.accessKey}
+        .onAppear {serverAddress=chat.state.server;accessKey=chat.relayAccessKey}
+        .onChange(of:chat.state.server) {_,value in serverAddress=value}
     }
     private func configure() async {
         let oldKey=chat.state.relayAccessKey

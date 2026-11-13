@@ -10,5 +10,17 @@ enum Deployment {
     }()
     static var serverURL: String { configuration["ServerURL"] as? String ?? "http://localhost:8787" }
     static var accessKey: String { configuration["AccessKey"] as? String ?? "" }
+    static var discoveryURL: URL? {
+        guard let value=configuration["DiscoveryURL"] as? String,let url=URL(string:value),url.scheme == "https" else {return nil}
+        return url
+    }
+    static var discoveryFallbackURL: URL? {
+        guard let value=configuration["DiscoveryFallbackURL"] as? String,let url=URL(string:value),url.scheme == "https" else {return nil}
+        return url
+    }
+    static var discoveryPublicKey: Data? {
+        guard let value=configuration["DiscoveryPublicKey"] as? String else {return nil}
+        return Data(base64Encoded:value)
+    }
     static var legacyURLs: [String] { configuration["LegacyURLs"] as? [String] ?? [] }
 }

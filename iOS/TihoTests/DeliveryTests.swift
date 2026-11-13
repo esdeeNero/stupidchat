@@ -9,11 +9,12 @@ import CryptoKit
         defer { chat.state=original; chat.persist() }
         chat.error=""
         chat.state=State()
-        chat.state.server=Deployment.serverURL
+        chat.state.server=Deployment.discoveryURL == nil ? Deployment.serverURL:"https://retired-endpoint.invalid"
         await chat.register()
         XCTAssertTrue(chat.error.isEmpty,chat.error)
+        XCTAssertNotEqual(chat.state.server,"https://retired-endpoint.invalid")
         let local=try XCTUnwrap(chat.state.account)
-        await chat.changeServer(Deployment.serverURL)
+        await chat.changeServer(chat.state.server)
         XCTAssertEqual(chat.state.account?.id,local.id)
         XCTAssertTrue(chat.error.isEmpty,chat.error)
         let invitationData=try XCTUnwrap(Data(base64Encoded:chat.invitation))
@@ -58,6 +59,17 @@ import CryptoKit
         let reloaded=Chat()
         XCTAssertEqual(reloaded.state.messages.count,5)
         XCTAssertEqual(reloaded.state.messages.last?.data,binary)
+        if Deployment.discoveryURL != nil {
+            chat.state.server="https://retired-endpoint.invalid"
+            try chat.save()
+            let recovered=Chat()
+            try await recovered.refreshEndpoint(force:true)
+            XCTAssertNotEqual(recovered.state.server,"https://retired-endpoint.invalid")
+            XCTAssertEqual(recovered.state.account?.id,local.id)
+            XCTAssertEqual(recovered.state.messages.count,5)
+            await recovered.poll() // Also verify connectivity when no new messages exist.
+            XCTAssertEqual(recovered.connection,"Сервер доступен")
+        }
         if let legacy=Deployment.legacyURLs.first {
             chat.state.server=legacy
             try chat.save()
