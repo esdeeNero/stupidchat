@@ -13,6 +13,7 @@ with connect() as db:
 CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY, recipient TEXT, body TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS chunks(id TEXT, recipient TEXT, idx INTEGER, total INTEGER, body TEXT, created REAL, PRIMARY KEY(id,recipient,idx));
 CREATE TABLE IF NOT EXISTS receipts(id TEXT, recipient TEXT, created REAL, PRIMARY KEY(id,recipient));''')
+presence = {}  # Foreground polls only, cleared when the relay restarts.
 def used(db):return db.execute('SELECT (SELECT coalesce(sum(length(body)),0) FROM messages)+(SELECT coalesce(sum(length(body)),0) FROM chunks)').fetchone()[0]
 def dispatch(db,action,ident,method,payload,query,token):
     account=db.execute('SELECT token FROM accounts WHERE id=?',(ident,)).fetchone()
@@ -46,10 +47,15 @@ def dispatch(db,action,ident,method,payload,query,token):
     if not secrets.compare_digest(account[0],hashlib.sha256(token.encode()).hexdigest()):return 401,{'error':'Unauthorized'}
     if action=='session' and method=='GET':return 200,{'ok':True}
     if action=='inbox' and method=='GET':
+        peer = query.get('peer', [''])[0]
+        now = time.monotonic()
+        presence[ident] = (peer, now)
+        contact, seen = presence.get(peer, (None, 0))
+        online = contact == ident and now - seen < 30
         chunked=query.get('chunked')==['1']
         order='length(body),created' if chunked else 'created'
         rows=db.execute('SELECT id,body FROM messages WHERE recipient=? ORDER BY '+order+' LIMIT 10',(ident,)).fetchall()
-        return 200,{'messages':[{'id':mid,'body':'','parts':(len(body)+PIECE-1)//PIECE} if chunked and len(body)>PIECE else {'id':mid,'body':body} for mid,body in rows]}
+        return 200,{'peerOnline':online,'messages':[{'id':mid,'body':'','parts':(len(body)+PIECE-1)//PIECE} if chunked and len(body)>PIECE else {'id':mid,'body':body} for mid,body in rows]}
     if action=='piece' and method=='GET':
         mid=query['message'][0];index=int(query['index'][0])
         row=db.execute('SELECT body FROM messages WHERE id=? AND recipient=?',(mid,ident)).fetchone()
@@ -66,7 +72,7 @@ def dispatch(db,action,ident,method,payload,query,token):
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args):pass
     def reply(self,code,obj):
-        data=json.dumps(obj).encode();self.send_response(code);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+        data=json.dumps(obj).encode();self.send_response(code);self.send_header('Cache-Control','no-store');self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
     def do_GET(self):self.handle_request('GET')
     def do_POST(self):self.handle_request('POST')
     def handle_request(self,method):

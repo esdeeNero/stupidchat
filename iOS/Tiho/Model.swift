@@ -13,7 +13,7 @@ struct PendingEnvelope: Codable, Identifiable { var id: String {envelope.id}; le
 struct CipherPiece: Codable { let id: String; let index: Int; let total: Int; let body: String }
 struct ChunkReply: Decodable { let ok: Bool; let complete: Bool }
 struct DownloadPiece: Decodable { let body: String }
-struct Inbox: Codable { let messages: [Envelope] }
+struct Inbox: Codable { let messages: [Envelope]; var peerOnline: Bool? }
 struct State: Codable { var account: Account?; var peer: Invite?; var messages: [Message] = []; var profile = Profile(); var remoteProfile = Profile(name: "Собеседник"); var server = Deployment.serverURL; var relayAccessKey: String?; var archived: Bool?; var lastReadAt: Date?; var automaticEndpoint: Bool?; var lastEndpointIssuedAt: TimeInterval?; var outbox: [PendingEnvelope]?; var lastProfileHash: String?; var remoteProfileDate: Date? }
 
 enum Vault {
@@ -35,6 +35,7 @@ enum Vault {
     @Published var busy = false
     @Published var recording = false
     @Published var attachmentProgress: Double?
+    @Published var peerOnline: Bool?
     @Published var connection = "Подключение…"
     private var previewMode=false
     private var resolvingEndpoint=false
@@ -108,7 +109,7 @@ enum Vault {
         guard base.scheme=="https" || local else { throw URLError(.appTransportSecurityRequiresSecureConnection) }
         var components=URLComponents(url:base.appendingPathComponent(path),resolvingAgainstBaseURL:false)!
         if !query.isEmpty {components.queryItems=query}
-        var req=URLRequest(url:components.url!)
+        var req=URLRequest(url:components.url!,cachePolicy:.reloadIgnoringLocalCacheData)
         req.timeoutInterval=path.hasPrefix("chunk/") || path.hasPrefix("piece/") ? 25:12
         req.httpMethod=body == nil ? "GET":"POST"; req.httpBody=body
         req.setValue("application/json",forHTTPHeaderField:"Content-Type")
@@ -312,7 +313,7 @@ enum Vault {
         guard !previewMode,!busy else {return}
         if state.lastProfileHash == nil {await publishProfileIfNeeded()}
         Task {await flushOutbox()}
-        guard let account=state.account,state.peer != nil else {
+        guard let account=state.account,let peer=state.peer else {
             do {
                 if let account=state.account {let _: OK=try await request("session/\(account.id)")}
                 else {let _: OK=try await request("health")}
@@ -320,7 +321,8 @@ enum Vault {
             return
         }
         do {
-            let inbox: Inbox=try await request("inbox/\(account.id)",query:[URLQueryItem(name:"chunked",value:"1")])
+            let inbox: Inbox=try await request("inbox/\(account.id)",query:[URLQueryItem(name:"chunked",value:"1"),URLQueryItem(name:"peer",value:peer.id)])
+            peerOnline=inbox.peerOnline
             if inbox.messages.isEmpty {return}
             var ids=[String](),changed=false
             for envelope in inbox.messages {
@@ -344,16 +346,15 @@ enum Vault {
                     body=(0..<count).compactMap {pieces[$0]}.joined()
                 }
                 guard let data=Data(base64Encoded:body) else {continue}
-                let plain=try ChaChaPoly.open(ChaChaPoly.SealedBox(combined:data),using:sharedKey(),authenticating:Data(envelope.id.utf8))
-                var message=try JSONDecoder().decode(Message.self,from:plain)
+                guard let plain=try? ChaChaPoly.open(ChaChaPoly.SealedBox(combined:data),using:sharedKey(),authenticating:Data(envelope.id.utf8)), var message=try? JSONDecoder().decode(Message.self,from:plain) else {continue}
                 guard message.id==envelope.id else {continue}
                 message.mine=false;message.delivery=nil
                 if let profile=message.profile,message.date >= (state.remoteProfileDate ?? .distantPast) {state.remoteProfile=profile;state.remoteProfileDate=message.date}
                 message.profile=nil;state.messages.append(message);ids.append(envelope.id);downloads.removeValue(forKey:envelope.id);attachmentProgress=downloads.isEmpty ? nil:attachmentProgress;changed=true
             }
-            if changed {state.messages.sort {$0.date<$1.date};try save()}
-            if !ids.isEmpty {let _: OK=try await request("ack/\(account.id)",body:JSONEncoder().encode(["ids":ids]))}
-        } catch {connection="Нет связи · повторим автоматически"}
+            if changed {state.messages.sort {$0.date<$1.date}}
+            if !ids.isEmpty {try save();let _: OK=try await request("ack/\(account.id)",body:JSONEncoder().encode(["ids":ids]))}
+        } catch {peerOnline=nil;connection="Нет связи · повторим автоматически"}
     }
     func toggleRecording() async {
         if recording {

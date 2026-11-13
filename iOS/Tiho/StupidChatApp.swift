@@ -62,7 +62,7 @@ struct RootView: View {
         .alert("stupidchat",isPresented:Binding(get:{!chat.error.isEmpty},set:{if !$0 {chat.error=""}})) {
             Button("Понятно") { chat.error="" }
         } message: { Text(chat.error) }
-        .task { while !Task.isCancelled { if phase == .active { await chat.poll() }; try? await Task.sleep(for:.seconds(3)) } }
+        .task(id:phase) { guard phase == .active else {chat.peerOnline=nil;return}; while !Task.isCancelled { await chat.poll(); try? await Task.sleep(for:.seconds(3)) } }
     }
 }
 struct ChatListView: View {
@@ -227,7 +227,7 @@ struct ConversationView: View {
                 Button { profile=true } label: {
                     VStack(spacing:2) {
                         Text(chat.state.remoteProfile.name).font(.headline).foregroundStyle(.primary)
-                        Text(chat.connection).font(.system(size:11)).foregroundStyle(.secondary).lineLimit(1)
+                        Text(chat.peerOnline.map { $0 ? "В сети" : "Не в сети" } ?? "Статус неизвестен").font(.system(size:11)).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
             }
