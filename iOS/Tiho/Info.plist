@@ -23,5 +23,7 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>StupidChatPush</key>
+	<string>$(PUSH_ENTITLEMENTS)</string>
 </dict>
 </plist>

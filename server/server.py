@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Opaque relay: bodies and upload/download pieces are ciphertext only."""
+import re
+import push
 import base64, hashlib, json, os, secrets, sqlite3, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qs
@@ -11,6 +13,7 @@ def connect():
 with connect() as db:
     db.executescript('''CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY, token TEXT);
 CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY, recipient TEXT, body TEXT, created REAL);
+CREATE TABLE IF NOT EXISTS devices(recipient TEXT PRIMARY KEY, token TEXT);
 CREATE TABLE IF NOT EXISTS chunks(id TEXT, recipient TEXT, idx INTEGER, total INTEGER, body TEXT, created REAL, PRIMARY KEY(id,recipient,idx));
 CREATE TABLE IF NOT EXISTS receipts(id TEXT, recipient TEXT, created REAL, PRIMARY KEY(id,recipient));''')
 presence = {}  # Foreground polls only, cleared when the relay restarts.
@@ -43,10 +46,17 @@ def dispatch(db,action,ident,method,payload,query,token):
         if other and other[0]!=ident:return 409,{'error':'Envelope conflict'}
         db.execute('INSERT OR IGNORE INTO messages VALUES (?,?,?,?)',(mid,ident,body,time.time()))
         db.execute('DELETE FROM chunks WHERE id=? AND recipient=?',(mid,ident))
+        if query.get('silent') != ['1']:
+            device=db.execute('SELECT token FROM devices WHERE recipient=?',(ident,)).fetchone()
+            if device:push.enqueue(device[0])
         return 200,{'ok':True,'complete':True}
     if not secrets.compare_digest(account[0],hashlib.sha256(token.encode()).hexdigest()):return 401,{'error':'Unauthorized'}
     if action=='session' and method=='GET':return 200,{'ok':True}
     if action=='inbox' and method=='GET':
+        device=query.get('_device')
+        if device=='off':db.execute('DELETE FROM devices WHERE recipient=?',(ident,))
+        elif device and re.fullmatch('[0-9a-f]{32,256}',device):
+            db.execute('INSERT OR REPLACE INTO devices VALUES (?,?)',(ident,device))
         peer = query.get('peer', [''])[0]
         now = time.monotonic()
         presence[ident] = (peer, now)
@@ -78,6 +88,7 @@ class Handler(BaseHTTPRequestHandler):
     def handle_request(self,method):
         try:
             parsed=urlsplit(self.path);path=parsed.path.strip('/').split('/');query=parse_qs(parsed.query)
+            query['_device']=self.headers.get('X-Push-Device')
             if ACCESS_KEY and path!=['health'] and not secrets.compare_digest(self.headers.get('X-Tiho-Access',''),ACCESS_KEY):return self.reply(401,{'error':'Private relay access required'})
             size=int(self.headers.get('Content-Length',0))
             if not 0<=size<=LIMIT:return self.reply(413,{'error':'Maximum payload 28 MB'})

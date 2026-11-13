@@ -110,6 +110,9 @@ enum Vault {
         var components=URLComponents(url:base.appendingPathComponent(path),resolvingAgainstBaseURL:false)!
         if !query.isEmpty {components.queryItems=query}
         var req=URLRequest(url:components.url!,cachePolicy:.reloadIgnoringLocalCacheData)
+        if path.hasPrefix("inbox/") {
+            req.setValue(UserDefaults.standard.bool(forKey:"pushEnabled") ? PushRegistration.token : "off",forHTTPHeaderField:"X-Push-Device")
+        }
         req.timeoutInterval=path.hasPrefix("chunk/") || path.hasPrefix("piece/") ? 25:12
         req.httpMethod=body == nil ? "GET":"POST"; req.httpBody=body
         req.setValue("application/json",forHTTPHeaderField:"Content-Type")
@@ -259,15 +262,17 @@ enum Vault {
         // Re-evaluate priority after every piece, so text can pass a large profile upload.
         while let pending=state.outbox?.min(by:{$0.envelope.body.count<$1.envelope.body.count}) {
             do {
+                let quiet = state.messages.contains {$0.id == pending.id && $0.kind == "profile"}
+                let options = quiet ? [URLQueryItem(name:"silent",value:"1")] : []
                 let complete: Bool
                 if pending.envelope.body.utf8.count<=32768 {
-                    let _: OK=try await request("send/\(pending.recipient)",body:JSONEncoder().encode(pending.envelope));complete=true
+                    let _: OK=try await request("send/\(pending.recipient)",body:JSONEncoder().encode(pending.envelope),query:options);complete=true
                 } else {
                     let bytes=Array(pending.envelope.body.utf8),total=(bytes.count+32767)/32768
                     let index=min(pending.nextPiece,total-1)
                     let start=index*32768,end=min(start+32768,bytes.count)
                     let piece=CipherPiece(id:pending.id,index:index,total:total,body:String(decoding:bytes[start..<end],as:UTF8.self))
-                    let result: ChunkReply=try await request("chunk/\(pending.recipient)",body:JSONEncoder().encode(piece));complete=result.complete
+                    let result: ChunkReply=try await request("chunk/\(pending.recipient)",body:JSONEncoder().encode(piece),query:options);complete=result.complete
                     if !complete,let index=state.outbox?.firstIndex(where:{$0.id==pending.id}) {state.outbox?[index].nextPiece = pending.nextPiece+1 < total ? pending.nextPiece+1:0}
                 }
                 if complete {

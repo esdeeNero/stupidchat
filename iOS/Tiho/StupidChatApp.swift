@@ -5,6 +5,9 @@ import WebKit
 import UniformTypeIdentifiers
 
 @main struct StupidChatApp: App {
+    @UIApplicationDelegateAdaptor(PushRegistration.self) var push
+    @AppStorage("appearance") var appearance = "Системная"
+    @AppStorage("palette") var palette = Palette.ocean
     @StateObject private var chat = Chat(preview: Self.previewEnabled)
     private static var previewEnabled: Bool {
         #if DEBUG
@@ -13,9 +16,39 @@ import UniformTypeIdentifiers
         false
         #endif
     }
-    var body: some Scene { WindowGroup { RootView().environmentObject(chat).tint(accent) } }
+    var body: some Scene { WindowGroup { RootView().environmentObject(chat).tint(palette.color).preferredColorScheme(appearance == "Светлая" ? .light : appearance == "Тёмная" ? .dark : nil) } }
 }
-let accent = Color(red:0.15,green:0.51,blue:0.84)
+enum Palette: String, CaseIterable {
+    case ocean = "Океан", lilac = "Сирень", forest = "Лес"
+    var color: Color {
+        switch self {
+        case .ocean: Color(red:0.15,green:0.51,blue:0.84)
+        case .lilac: Color(red:0.57,green:0.38,blue:0.82)
+        case .forest: Color(red:0.12,green:0.54,blue:0.40)
+        }
+    }
+}
+struct AppearanceView: View {
+    @AppStorage("appearance") var appearance = "Системная"
+    @AppStorage("palette") var palette = Palette.ocean
+    @AppStorage("pattern") var pattern = true
+    var body: some View {
+        Form {
+            Section {
+                ZStack {
+                    ChatWallpaper()
+                    VStack(spacing:8) {
+                        MessageBubble(message:Message(text:"Привет!",mine:false),onPlay:{},onVideo:{})
+                        MessageBubble(message:Message(text:"Увидимся вечером?"),onPlay:{},onVideo:{})
+                    }.padding(12)
+                }.clipShape(RoundedRectangle(cornerRadius:16)).listRowInsets(EdgeInsets())
+            }
+            Picker("Тема",selection:$appearance) { ForEach(["Системная","Светлая","Тёмная"],id:\.self) {Text($0)} }
+            Picker("Цвет",selection:$palette) {ForEach(Palette.allCases,id:\.self) {Text($0.rawValue).tag($0)}}
+            Toggle("Узор в чате",isOn:$pattern)
+        }.navigationTitle("Оформление")
+    }
+}
 enum ChatTheme {
     static let background=Color(uiColor:.systemGroupedBackground)
     static let outgoing=Color(uiColor:UIColor { $0.userInterfaceStyle == .dark ? UIColor(red:0.15,green:0.30,blue:0.43,alpha:1):UIColor(red:0.85,green:0.94,blue:1,alpha:1) })
@@ -36,6 +69,8 @@ struct AnimatedImage: UIViewRepresentable {
     }
 }
 struct Avatar: View {
+    @AppStorage("palette") private var palette = Palette.ocean
+    private var accent: Color { palette.color }
     let profile: Profile
     var size: CGFloat = 52
     var body: some View {
@@ -62,10 +97,12 @@ struct RootView: View {
         .alert("stupidchat",isPresented:Binding(get:{!chat.error.isEmpty},set:{if !$0 {chat.error=""}})) {
             Button("Понятно") { chat.error="" }
         } message: { Text(chat.error) }
-        .task(id:phase) { guard phase == .active else {chat.peerOnline=nil;return}; while !Task.isCancelled { await chat.poll(); try? await Task.sleep(for:.seconds(3)) } }
+        .task(id:phase) { guard phase == .active else {chat.peerOnline=nil;return}; if PushRegistration.supported && UserDefaults.standard.bool(forKey:"pushEnabled") { UIApplication.shared.registerForRemoteNotifications() }; while !Task.isCancelled { await chat.poll(); try? await Task.sleep(for:.seconds(3)) } }
     }
 }
 struct ChatListView: View {
+    @AppStorage("palette") private var palette = Palette.ocean
+    private var accent: Color { palette.color }
     @EnvironmentObject var chat: Chat
     @State private var search=""
     @State private var filter="Все"
@@ -107,7 +144,7 @@ struct ChatListView: View {
                     }.listStyle(.plain)
                 }
             }
-            .navigationTitle("Чаты").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Чаты").navigationBarTitleDisplayMode(.large)
             .searchable(text:$search,prompt:"Поиск сообщений и людей")
             .toolbar {
                 ToolbarItem(placement:.topBarLeading) { Image("StupidLogo").resizable().frame(width:30,height:30).clipShape(RoundedRectangle(cornerRadius:8)).accessibilityLabel("stupidchat") }
@@ -132,6 +169,8 @@ struct ChatListView: View {
     }
 }
 struct ConversationRow: View {
+    @AppStorage("palette") private var palette = Palette.ocean
+    private var accent: Color { palette.color }
     @EnvironmentObject var chat: Chat
     var body: some View {
         HStack(alignment:.top,spacing:12) {
@@ -175,8 +214,12 @@ struct ContactsView: View {
     }
 }
 struct ChatWallpaper: View {
+    @AppStorage("pattern") private var pattern = true
+    @AppStorage("palette") private var palette = Palette.ocean
+    private var accent: Color { palette.color }
     var body: some View {
         Canvas { context,size in
+            guard pattern else {return}
             for row in 0..<Int(size.height/72)+1 {
                 for column in 0..<Int(size.width/72)+1 {
                     let x=CGFloat(column)*72+(row%2 == 0 ? 12:42), y=CGFloat(row)*72+20
@@ -185,10 +228,12 @@ struct ChatWallpaper: View {
                     context.stroke(Path(ellipseIn:CGRect(x:x+23,y:y+25,width:8,height:8)),with:.color(accent.opacity(0.07)),lineWidth:1)
                 }
             }
-        }.background(ChatTheme.wallpaper).ignoresSafeArea()
+        }.background(accent.opacity(0.10).background(ChatTheme.wallpaper)).ignoresSafeArea()
     }
 }
 struct ConversationView: View {
+    @AppStorage("palette") private var palette = Palette.ocean
+    private var accent: Color { palette.color }
     @EnvironmentObject var chat: Chat
     @State private var text=""
     @State private var selection: PhotosPickerItem?
@@ -272,6 +317,8 @@ struct ConversationView: View {
     }
 }
 struct MessageBubble: View {
+    @AppStorage("palette") private var palette = Palette.ocean
+    private var accent: Color { palette.color }
     let message: Message
     let onPlay: () -> Void
     let onVideo: () -> Void
@@ -292,18 +339,20 @@ struct MessageBubble: View {
                 }
                 if !message.text.isEmpty {Text(message.text).textSelection(.enabled)}
                 HStack(spacing:4) {
-                    Spacer(minLength:0)
                     Text(message.date,style:.time).font(.system(size:10))
                     if message.mine {Image(systemName:message.delivery == "pending" ? "clock":"checkmark").font(.system(size:10,weight:.semibold)).accessibilityLabel(message.delivery == "pending" ? "Ожидает отправки":"Принято сервером")}
                 }.foregroundStyle(.secondary)
-            }.padding(.horizontal,11).padding(.vertical,8).frame(maxWidth:285,alignment:.leading)
-                .background(message.mine ? ChatTheme.outgoing:ChatTheme.incoming,in:UnevenRoundedRectangle(topLeadingRadius:17,bottomLeadingRadius:message.mine ? 17:5,bottomTrailingRadius:message.mine ? 5:17,topTrailingRadius:17))
-                .shadow(color:.black.opacity(0.035),radius:1,y:1)
+            }.padding(.horizontal,11).padding(.vertical,8)
+                .background(message.mine ? accent.opacity(0.23):Color.clear,in:UnevenRoundedRectangle(topLeadingRadius:17,bottomLeadingRadius:message.mine ? 17:5,bottomTrailingRadius:message.mine ? 5:17,topTrailingRadius:17))
+                .background(ChatTheme.incoming,in:UnevenRoundedRectangle(topLeadingRadius:17,bottomLeadingRadius:message.mine ? 17:5,bottomTrailingRadius:message.mine ? 5:17,topTrailingRadius:17))
+                .shadow(color:.black.opacity(0.035),radius:1,y:1).frame(maxWidth:285,alignment:message.mine ? .trailing:.leading)
             if !message.mine {Spacer(minLength:40)}
         }
     }
 }
 struct SettingsView: View {
+    @AppStorage("palette") private var palette = Palette.ocean
+    private var accent: Color { palette.color }
     @EnvironmentObject var chat: Chat
     var body: some View {
         NavigationStack {
@@ -313,7 +362,9 @@ struct SettingsView: View {
                         HStack(spacing:16) {Avatar(profile:chat.state.profile,size:66);VStack(alignment:.leading,spacing:5) {Text(chat.state.profile.name).font(.title2.bold());Text(chat.state.profile.bio).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)}}.padding(.vertical,8)
                     }
                 }
+                PushSettings()
                 Section {
+                    NavigationLink { AppearanceView() } label: {SettingsLabel(title:"Оформление",symbol:"paintpalette.fill",color:accent)}
                     NavigationLink { ConnectionView() } label: {SettingsLabel(title:"Подключение и приглашения",symbol:"network",color:accent)}
                     NavigationLink { EditProfileView() } label: {SettingsLabel(title:"Аватарка и профиль",symbol:"person.crop.circle.fill",color:.purple)}
                     NavigationLink { SecurityView() } label: {SettingsLabel(title:"Конфиденциальность",symbol:"lock.fill",color:.blue)}
@@ -321,9 +372,9 @@ struct SettingsView: View {
                 Section {
                     HStack(spacing:14) {
                         Image("StupidLogo").resizable().frame(width:46,height:46).clipShape(RoundedRectangle(cornerRadius:11))
-                        VStack(alignment:.leading,spacing:4) {Text("stupidchat").font(.headline);Text("Версия 0.3.2 · made for your people").font(.caption).foregroundStyle(.secondary)}
+                        VStack(alignment:.leading,spacing:4) {Text("stupidchat").font(.headline);Text("Версия 0.4.0").font(.caption).foregroundStyle(.secondary)}
                     }.padding(.vertical,4)
-                    Text("Получение работает при открытом приложении. Push-уведомления пока не подключены.").font(.caption).foregroundStyle(.secondary)
+                    Text("Переписка загружается при открытии приложения.").font(.caption).foregroundStyle(.secondary)
                 }
             }.navigationTitle("Настройки").navigationBarTitleDisplayMode(.inline)
         }
@@ -358,6 +409,8 @@ struct EditProfileView: View {
     }
 }
 struct ProfileHeader: View {
+    @AppStorage("palette") private var palette = Palette.ocean
+    private var accent: Color { palette.color }
     let profile: Profile
     var body: some View {
         ZStack(alignment:.bottomLeading) {
@@ -369,6 +422,8 @@ struct ProfileHeader: View {
     }
 }
 struct PeerProfileView: View {
+    @AppStorage("palette") private var palette = Palette.ocean
+    private var accent: Color { palette.color }
     @EnvironmentObject var chat: Chat
     private var profile: Profile {chat.state.remoteProfile}
     var body: some View {
@@ -422,6 +477,8 @@ struct ConnectionView: View {
     }
 }
 struct SecurityView: View {
+    @AppStorage("palette") private var palette = Palette.ocean
+    private var accent: Color { palette.color }
     @EnvironmentObject var chat: Chat
     var body: some View {
         Form {
