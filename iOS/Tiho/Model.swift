@@ -9,7 +9,7 @@ struct Message: Codable, Identifiable { var id = UUID().uuidString; var text = "
 struct Account: Codable { let id: String; let token: String }
 struct Envelope: Codable { let id: String; let body: String }
 struct Inbox: Codable { let messages: [Envelope] }
-struct State: Codable { var account: Account?; var peer: Invite?; var messages: [Message] = []; var profile = Profile(); var remoteProfile = Profile(name: "Собеседник"); var server = Deployment.serverURL }
+struct State: Codable { var account: Account?; var peer: Invite?; var messages: [Message] = []; var profile = Profile(); var remoteProfile = Profile(name: "Собеседник"); var server = Deployment.serverURL; var relayAccessKey: String?; var archived: Bool?; var lastReadAt: Date? }
 
 enum Vault {
     static func key(_ name: String, create: () -> Data) throws -> Data {
@@ -30,12 +30,32 @@ enum Vault {
     @Published var busy = false
     @Published var recording = false
     @Published var connection = "Подключение…"
+    private var previewMode=false
     private var recorder: AVAudioRecorder?
     private var player: AVAudioPlayer?
     private var identity: Curve25519.KeyAgreement.PrivateKey?
     private var storageKey: SymmetricKey?
     private let file = URL.documentsDirectory.appendingPathComponent("history.sealed")
-    init() {
+    init(preview: Bool = false) {
+        #if DEBUG
+        if preview {
+            previewMode=true
+            state.profile=Profile(name:"Вы",bio:"stay a little stupid ✦")
+            state.remoteProfile=Profile(name:"Алекс",bio:"музыка, ночной город и хорошие люди")
+            state.peer=Invite(id:"preview-peer",key:Data(),name:"Алекс")
+            state.account=Account(id:"preview-local",token:"")
+            let now=Date()
+            state.messages=[
+                Message(text:"Привет! Как тебе stupidchat?",date:now.addingTimeInterval(-900),mine:false),
+                Message(text:"Этот хромовый логотип — любовь ✦",date:now.addingTimeInterval(-840)),
+                Message(text:"И наконец-то можно болтать из разных сетей",date:now.addingTimeInterval(-780),mine:false),
+                Message(text:"Да. Тот же разговор, где бы мы ни были.",date:now.addingTimeInterval(-720)),
+                Message(text:"Встретимся вечером?",date:now.addingTimeInterval(-120),mine:false)
+            ]
+            connection="Демонстрационный режим"
+            return
+        }
+        #endif
         do {
             identity = try .init(rawRepresentation: Vault.key("identity") { Curve25519.KeyAgreement.PrivateKey().rawRepresentation })
             storageKey = SymmetricKey(data: try Vault.key("storage") { SymmetricKey(size:.bits256).withUnsafeBytes { Data($0) } })
@@ -48,6 +68,7 @@ enum Vault {
         } catch { self.error="Не удалось открыть защищённое хранилище: \(error.localizedDescription)" }
     }
     func save() throws {
+        guard !previewMode else { return }
         guard let key=storageKey else { throw URLError(.cannotDecodeContentData) }
         let data=try AES.GCM.seal(JSONEncoder().encode(state),using:key).combined!
         try data.write(to:file,options:[.atomic,.completeFileProtection])
@@ -61,6 +82,7 @@ enum Vault {
         return URLSession(configuration:config)
     }()
     func request<T: Decodable>(_ path: String, body: Data? = nil, server: String? = nil) async throws -> T {
+        guard !previewMode else { throw URLError(.notConnectedToInternet) }
         guard let base=URL(string:server ?? state.server), ["https","http"].contains(base.scheme ?? ""), let host=base.host, base.user == nil, base.password == nil, base.query == nil, base.fragment == nil else { throw URLError(.badURL) }
         let octets=host.split(separator:".").compactMap { Int($0) }
         let ipv4=octets.count==4 && octets.allSatisfy { (0...255).contains($0) }
@@ -70,7 +92,7 @@ enum Vault {
         var req=URLRequest(url:base.appendingPathComponent(path))
         req.httpMethod=body == nil ? "GET":"POST"; req.httpBody=body
         req.setValue("application/json",forHTTPHeaderField:"Content-Type")
-        req.setValue(Deployment.accessKey,forHTTPHeaderField:"X-Tiho-Access")
+        req.setValue(state.relayAccessKey ?? Deployment.accessKey,forHTTPHeaderField:"X-Tiho-Access")
         if let account=state.account { req.setValue("Bearer \(account.token)",forHTTPHeaderField:"Authorization") }
         do {
             let (data,response)=try await Self.network.data(for:req)
@@ -96,6 +118,9 @@ enum Vault {
         guard !busy else { return }; busy=true; defer {busy=false}
         do { if state.account == nil { state.account=try await request("register",body:Data("{}".utf8)); try save() } } catch { self.error="Сервер недоступен: \(error.localizedDescription)" }
     }
+    var unreadCount: Int { state.messages.filter { !$0.mine && $0.date > (state.lastReadAt ?? .distantPast) }.count }
+    func markRead() { state.lastReadAt=Date(); persist() }
+    func archive(_ value: Bool) { state.archived=value; persist() }
     var invitation: String {
         guard let account=state.account, let identity else { return "" }
         return (try? JSONEncoder().encode(Invite(id:account.id,key:identity.publicKey.rawRepresentation,name:state.profile.name,server:state.server)).base64EncodedString()) ?? ""
@@ -133,7 +158,7 @@ enum Vault {
         } catch { self.error="Не удалось отправить. \(error.localizedDescription)" }
     }
     func poll() async {
-        guard !busy, let account=state.account, state.peer != nil else { return }
+        guard !previewMode, !busy, let account=state.account, state.peer != nil else { return }
         do {
             let inbox: Inbox=try await request("inbox/\(account.id)")
             var ids=[String]()

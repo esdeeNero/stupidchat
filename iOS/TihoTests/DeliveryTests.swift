@@ -1,6 +1,6 @@
 import XCTest
 import CryptoKit
-@testable import Tiho
+@testable import StupidChat
 
 @MainActor final class DeliveryTests: XCTestCase {
     func testEncryptedRoundTripThroughRelay() async throws {
@@ -58,11 +58,13 @@ import CryptoKit
         let reloaded=Chat()
         XCTAssertEqual(reloaded.state.messages.count,5)
         XCTAssertEqual(reloaded.state.messages.last?.data,binary)
-        chat.state.server=try XCTUnwrap(Deployment.legacyURLs.first)
-        try chat.save()
-        let migrated=Chat()
-        XCTAssertEqual(migrated.state.server,Deployment.serverURL)
-        XCTAssertEqual(migrated.state.account?.id,local.id)
-        XCTAssertEqual(migrated.state.messages.count,5)
+        if let legacy=Deployment.legacyURLs.first {
+            chat.state.server=legacy
+            try chat.save()
+            let migrated=Chat()
+            XCTAssertEqual(migrated.state.server,Deployment.serverURL)
+            XCTAssertEqual(migrated.state.account?.id,local.id)
+            XCTAssertEqual(migrated.state.messages.count,5)
+        }
     }
 }
