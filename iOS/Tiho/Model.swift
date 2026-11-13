@@ -373,10 +373,13 @@ enum Vault {
             peerOnline=inbox.peerOnline
             if inbox.messages.isEmpty {return}
             var ids=[String](),changed=false
+            var downloadedLarge=false
             for envelope in inbox.messages {
                 if state.messages.contains(where:{$0.id==envelope.id}) {ids.append(envelope.id);continue}
                 var body=envelope.body
                 if let count=envelope.parts {
+                    if downloadedLarge {continue}
+                    downloadedLarge=true
                     guard (1...3584).contains(count) else {continue}
                     var pieces=downloads[envelope.id] ?? [:]
                     let missing=(0..<count).filter {pieces[$0]==nil}.prefix(4)

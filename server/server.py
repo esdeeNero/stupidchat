@@ -64,7 +64,7 @@ def dispatch(db,action,ident,method,payload,query,token):
         contact, seen = presence.get(peer, (None, 0))
         online = contact == ident and now - seen < 30
         chunked=query.get('chunked')==['1']
-        order='length(body),created' if chunked else 'created'
+        order='CASE WHEN length(body)>8192 THEN 1 ELSE 0 END,created DESC' if chunked else 'created'
         rows=db.execute('SELECT id,body FROM messages WHERE recipient=? ORDER BY '+order+' LIMIT 10',(ident,)).fetchall()
         return 200,{'peerOnline':online,'messages':[{'id':mid,'body':'','parts':(len(body)+download_size-1)//download_size} if chunked and len(body)>download_size else {'id':mid,'body':body} for mid,body in rows]}
     if action=='piece' and method=='GET':
