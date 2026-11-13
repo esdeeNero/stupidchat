@@ -1,4 +1,32 @@
-# Тихо 0.2 · переписка через интернет
+# stupidchat · iPhone messenger
+
+
+<p align="center"><img src="branding/stupid-y2k.png" width="160" alt="stupid — chrome Y2K app icon"></p>
+
+**RU:** Мессенджер на SwiftUI со знакомой структурой Telegram: список чатов, поиск, архив, непрочитанные, вкладки контактов и настроек, отдельная переписка с голубыми пузырьками. Собственный бренд **stupidchat** и хромированная иконка **stupid** в стиле Y2K. Приложение не связано с Telegram и не использует его API.
+
+**EN:** A native SwiftUI messenger with Telegram-inspired navigation, searchable chats, an archive, unread badges, contact profiles and blue message bubbles. Includes a custom chrome Y2K **stupid** app icon. Independent project; no Telegram API or affiliation.
+
+## Quick start / Быстрый запуск
+
+```sh
+python3 server/server.py
+open iOS/StupidChat.xcodeproj
+```
+
+For the simulator, the default endpoint is `http://localhost:8787`. For real phones outside your network, deploy the relay with HTTPS and enter the same server address and private relay key on both phones in **Настройки → Подключение и приглашения**. The key is stored inside the encrypted local history.
+
+Чтобы добавить локальную конфигурацию сборки, скопируйте `iOS/Tiho/Connection.example.plist` в `iOS/Tiho/Connection.local.plist` и укажите свой адрес и ключ. Локальный файл не отслеживается Git и копируется в приложение только при наличии. Клон репозитория собирается без него; настройки можно ввести в интерфейсе.
+
+Bundle ID и Keychain service сохранены от ранней версии для обновления без потери истории. Название на домашнем экране — **stupidchat**. Внутренний каталог `iOS/Tiho` оставлен ради совместимости конфигурации сервера.
+
+## UI previews / Демонстрация интерфейса
+
+Скриншоты ниже содержат только демонстрационные данные из Debug-режима `--ui-preview`. Он не читает реальную историю, не сохраняет данные и не обращается к сети. В Release этот режим отключён.
+
+<img src="docs/chats-demo.png" width="250" alt="Chat list — demo data"> <img src="docs/conversation-demo.png" width="250" alt="Conversation — demo data">
+
+Светлая и тёмная темы следуют системной настройке iPhone. Галочка у исходящего означает принятие сервером, а не прочтение собеседником.
 
 Нативный SwiftUI-проект для iOS 17+ и Xcode. Два iPhone могут использовать разные Wi-Fi-сети или мобильный интернет: оба подключаются к одному публичному HTTPS-адресу. Реализованы текст, фото, видео, голосовые, профиль, GIF-аватарка и баннер.
 
@@ -6,8 +34,8 @@
 
 ## Начать переписку
 
-1. Откройте `iOS/Tiho.xcodeproj`, выберите свою Team в Signing & Capabilities. Подключите iPhone, выберите его и нажмите Run. Повторите на втором iPhone. Если Xcode требует — включите Developer Mode на телефоне. Срок действия подписи зависит от Apple developer account.
-2. На обоих телефонах нужна **обновлённая версия 0.2**, поскольку сервер теперь требует дополнительный ключ доступа. Для текущего сервера адрес и ключ находятся в локальном `iOS/Tiho/Connection.local.plist`, который исключён из Git. Не публикуйте этот файл: он содержит общий ключ доступа к вашей серверной установке. Этот ключ не расшифровывает сообщения.
+1. Откройте `iOS/StupidChat.xcodeproj`, выберите свою Team в Signing & Capabilities. Подключите iPhone, выберите его и нажмите Run. Повторите на втором iPhone. Если Xcode требует — включите Developer Mode на телефоне. Срок действия подписи зависит от Apple developer account.
+2. На обоих телефонах нужна **обновлённая версия 0.3**, поскольку сервер теперь требует дополнительный ключ доступа. Для текущего сервера адрес и ключ находятся в локальном `iOS/Tiho/Connection.local.plist`, который исключён из Git. Не публикуйте этот файл: он содержит общий ключ доступа к вашей серверной установке. Этот ключ не расшифровывает сообщения.
 3. Откройте настройки приложения. Текущий публичный адрес также записан в `server/connection.txt`. Старый адрес этого Mac обновляется при запуске новой сборки автоматически, с сохранением аккаунта, ключей, контакта и истории. Не удаляйте приложение для обновления.
 4. Если собственного адреса ещё нет, нажмите «Подключиться и создать адрес».
 5. Если контакт ещё не добавлен, обменяйтесь приглашениями через AirDrop или другой доверенный канал. Оба участника должны добавить код друг друга. Затем сверяйте весь код безопасности на двух iPhone лично или по доверенному голосовому каналу.
@@ -83,3 +111,12 @@ iOS `TihoTests/DeliveryTests.swift`: используется **реальный
 Остаются отдельные ручные проверки: два физических iPhone на разных операторах, реальная запись и воспроизведение медиа. Push, несколько контактов, группы, звонки, резервное восстановление и фоновые исходящие пока отсутствуют.
 
 Документация: [Apple CryptoKit](https://developer.apple.com/documentation/cryptokit), [Signal Double Ratchet](https://signal.org/docs/specifications/doubleratchet/), [localhost.run HTTPS-туннели](https://localhost.run/docs/http-tunnels), [временные домены](https://localhost.run/docs/faq).
+
+## Development checks / Проверки разработки
+
+- Server: `python3 server/test_relay.py`.
+- UI: scheme `StupidChat`, target `StupidChatUITests`. Проверяет вкладки, открытие переписки, поиск и настройки на демонстрационных данных.
+- Crypto/delivery: target `StupidChatTests`, живой сервер из локальной конфигурации. Для этого теста используйте отдельный симулятор.
+- CI builds the simulator app without private connection settings and runs the relay tests.
+
+The app icon was created with the built-in imagegen tool. The exact generation prompt is in [branding/PROMPT.md](branding/PROMPT.md).
