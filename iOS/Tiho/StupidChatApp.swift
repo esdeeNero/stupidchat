@@ -154,8 +154,8 @@ struct ChatListView: View {
         }
     }
     private var visible: Bool {
-        let matches=search.isEmpty || chat.state.remoteProfile.name.localizedCaseInsensitiveContains(search) || chat.state.messages.contains { $0.text.localizedCaseInsensitiveContains(search) }
-        return matches && (filter != "Непрочитанные" || chat.unreadCount>0) && (filter != "Медиа" || chat.state.messages.contains { ["photo","video","voice"].contains($0.kind) })
+        let matches=search.isEmpty || chat.state.remoteProfile.name.localizedCaseInsensitiveContains(search) || chat.state.messages.contains { $0.visible && $0.text.localizedCaseInsensitiveContains(search) }
+        return matches && (filter != "Непрочитанные" || chat.unreadCount>0) && (filter != "Медиа" || chat.state.messages.contains { $0.visible && ["photo","video","voice"].contains($0.kind) })
     }
     private var emptyInbox: some View {
         VStack(spacing:18) {
@@ -179,7 +179,7 @@ struct ConversationRow: View {
                 HStack {
                     Text(chat.state.remoteProfile.name).font(.headline).lineLimit(1)
                     Spacer()
-                    if let last=chat.state.messages.last(where:{$0.kind != "profile"}) { Text(last.date,style:.time).font(.caption).foregroundStyle(.secondary) }
+                    if let last=chat.state.messages.last(where:{$0.visible}) { Text(last.date,style:.time).font(.caption).foregroundStyle(.secondary) }
                 }
                 HStack(alignment:.top) {
                     Text(preview).font(.subheadline).foregroundStyle(.secondary).lineLimit(2).frame(maxWidth:.infinity,alignment:.leading)
@@ -189,7 +189,7 @@ struct ConversationRow: View {
         }.padding(.vertical,6)
     }
     private var preview: String {
-        guard let last=chat.state.messages.last(where:{$0.kind != "profile"}) else { return "Написать сообщение" }
+        guard let last=chat.state.messages.last(where:{$0.visible}) else { return "Написать сообщение" }
         let value: String
         switch last.kind { case "photo": value="📷 Фото"; case "video":value="📹 Видео"; case "voice":value="🎤 Голосовое сообщение"; case "profile":value="Профиль обновлён"; default:value=last.text }
         return (last.mine ? "Вы: ":"")+value
@@ -242,6 +242,9 @@ struct ConversationView: View {
     @State private var showVideo=false
     @State private var profile=false
     @State private var search=""
+    @State private var editing: Message?
+    @State private var replacement=""
+    @State private var removing: Message?
     @State private var searching=false
     var body: some View {
         ZStack {
@@ -255,16 +258,35 @@ struct ConversationView: View {
                             if chat.state.messages.isEmpty { Text("Здесь начинается ваш разговор").font(.subheadline).foregroundStyle(.secondary).padding(24) }
                             ForEach(visibleMessages) { message in
                                 MessageBubble(message:message,onPlay:{ if let data=message.data { chat.play(data) } },onVideo:{ openVideo(message) })
+                                    .contextMenu {
+                                        if message.mine {
+                                            if message.kind=="text" {Button("Редактировать",systemImage:"pencil") {replacement=message.text;editing=message}}
+                                            Button("Удалить у обоих",systemImage:"trash",role:.destructive) {removing=message}
+                                        }
+                                    }
                                     .id(message.id)
                             }
                         }.padding(.horizontal,10).padding(.bottom,12)
                     }.scrollDismissesKeyboard(.interactively)
-                        .onAppear { if let id=chat.state.messages.last(where:{$0.kind != "profile"})?.id { proxy.scrollTo(id,anchor:.bottom) }; chat.markRead() }
-                        .onChange(of:chat.state.messages.count) { _,_ in if let id=chat.state.messages.last(where:{$0.kind != "profile"})?.id { withAnimation {proxy.scrollTo(id,anchor:.bottom)} }; chat.markRead() }
+                        .onAppear { if let id=chat.state.messages.last(where:{$0.visible})?.id { proxy.scrollTo(id,anchor:.bottom) }; chat.markRead() }
+                        .onChange(of:chat.state.messages.count) { _,_ in if let id=chat.state.messages.last(where:{$0.visible})?.id { withAnimation {proxy.scrollTo(id,anchor:.bottom)} }; chat.markRead() }
                 }
             }
         }
         .safeAreaInset(edge:.bottom,spacing:0) { composer }
+        .sheet(item:$editing) { message in
+            NavigationStack {
+                Form { TextField("Текст сообщения",text:$replacement,axis:.vertical) }
+                    .navigationTitle("Редактирование")
+                    .toolbar {
+                        ToolbarItem(placement:.cancellationAction) {Button("Отмена") {editing=nil}}
+                        ToolbarItem(placement:.confirmationAction) {Button("Сохранить") {Task {if await chat.send(text:replacement,kind:"edit",target:message.id) {editing=nil}}}.disabled(replacement.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)}
+                    }
+            }.presentationDetents([.medium,.large])
+        }
+        .confirmationDialog("Удалить сообщение у обоих?",isPresented:Binding(get:{removing != nil},set:{if !$0 {removing=nil}}),titleVisibility:.visible,presenting:removing) {message in
+            Button("Удалить у обоих",role:.destructive) {Task {await chat.send(kind:"delete",target:message.id)}}
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden,for:.tabBar)
         .toolbar {
@@ -290,7 +312,7 @@ struct ConversationView: View {
             } catch {chat.error=error.localizedDescription}
         }
     }
-    private var visibleMessages: [Message] {chat.state.messages.filter {$0.kind != "profile" && (search.isEmpty || $0.text.localizedCaseInsensitiveContains(search))}}
+    private var visibleMessages: [Message] {chat.state.messages.filter {$0.visible && (search.isEmpty || $0.text.localizedCaseInsensitiveContains(search))}}
     private var composer: some View {
         VStack(spacing:0) {
             if chat.recording { Text("● Запись · нажмите стоп для отправки").font(.caption).foregroundStyle(.red).padding(.top,8) }
@@ -339,6 +361,7 @@ struct MessageBubble: View {
                 }
                 if !message.text.isEmpty {Text(message.text).textSelection(.enabled)}
                 HStack(spacing:4) {
+                    if message.edited != nil {Text("изменено").font(.caption2)}
                     Text(message.date,style:.time).font(.system(size:10))
                     if message.mine {Image(systemName:message.delivery == "pending" ? "clock":"checkmark").font(.system(size:10,weight:.semibold)).accessibilityLabel(message.delivery == "pending" ? "Ожидает отправки":"Принято сервером")}
                 }.foregroundStyle(.secondary)
@@ -372,7 +395,7 @@ struct SettingsView: View {
                 Section {
                     HStack(spacing:14) {
                         Image("StupidLogo").resizable().frame(width:46,height:46).clipShape(RoundedRectangle(cornerRadius:11))
-                        VStack(alignment:.leading,spacing:4) {Text("stupidchat").font(.headline);Text("Версия 0.4.0").font(.caption).foregroundStyle(.secondary)}
+                        VStack(alignment:.leading,spacing:4) {Text("stupidchat").font(.headline);Text("Версия 0.4.1").font(.caption).foregroundStyle(.secondary)}
                     }.padding(.vertical,4)
                     Text("Переписка загружается при открытии приложения.").font(.caption).foregroundStyle(.secondary)
                 }
@@ -404,8 +427,8 @@ struct EditProfileView: View {
         }.navigationTitle("Мой профиль").navigationBarTitleDisplayMode(.inline)
             .toolbar {ToolbarItem(placement:.topBarTrailing) {Button("Готово") {chat.persist();Task {await chat.publishProfileIfNeeded()};dismiss()}}}
             .onDisappear {chat.persist();Task {await chat.publishProfileIfNeeded()}}
-            .onChange(of:avatar) {_,item in Task {if let data=try? await item?.loadTransferable(type:Data.self),data.count<2*1024*1024 {chat.state.profile.avatar=data;chat.persist();await chat.publishProfileIfNeeded()} else {chat.error="Аватарка должна быть меньше 2 МБ"}}}
-            .onChange(of:banner) {_,item in Task {if let data=try? await item?.loadTransferable(type:Data.self),data.count<2*1024*1024 {chat.state.profile.banner=data;chat.persist();await chat.publishProfileIfNeeded()} else {chat.error="Баннер должен быть меньше 2 МБ"}}}
+            .onChange(of:avatar) {_,item in Task {if let data=try? await item?.loadTransferable(type:Data.self),let prepared=Chat.optimizedImage(data,maxDimension:320,targetBytes:192*1024,preserveGIF:true),prepared.count<2*1024*1024 {chat.state.profile.avatar=prepared;chat.persist();await chat.publishProfileIfNeeded()} else {chat.error="Аватарка должна быть меньше 2 МБ"}}}
+            .onChange(of:banner) {_,item in Task {if let data=try? await item?.loadTransferable(type:Data.self),let prepared=Chat.optimizedImage(data,maxDimension:960,targetBytes:192*1024,preserveGIF:false),prepared.count<2*1024*1024 {chat.state.profile.banner=prepared;chat.persist();await chat.publishProfileIfNeeded()} else {chat.error="Баннер должен быть меньше 2 МБ"}}}
     }
 }
 struct ProfileHeader: View {

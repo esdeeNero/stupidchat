@@ -4,17 +4,19 @@ import Security
 import AVFoundation
 import UIKit
 
-struct Profile: Codable { var name = "Я"; var bio = "На связи, в своём ритме"; var avatar: Data?; var banner: Data? }
+struct Profile: Codable, Equatable { var name = "Я"; var bio = "На связи, в своём ритме"; var avatar: Data?; var banner: Data? }
 struct Invite: Codable { let id: String; let key: Data; let name: String; var server: String? = nil }
-struct Message: Codable, Identifiable { var id = UUID().uuidString; var text = ""; var kind = "text"; var data: Data?; var date = Date(); var mine = true; var profile: Profile?; var delivery: String? }
+struct Message: Codable, Identifiable { var id = UUID().uuidString; var text = ""; var kind = "text"; var data: Data?; var date = Date(); var mine = true; var profile: Profile?; var delivery: String?; var target: String?; var edited: Date?; var deleted: Bool?
+    var visible: Bool { kind != "profile" && deleted != true }
+}
 struct Account: Codable { let id: String; let token: String }
 struct Envelope: Codable { let id: String; let body: String; var parts: Int? }
-struct PendingEnvelope: Codable, Identifiable { var id: String {envelope.id}; let recipient: String; let envelope: Envelope; var nextPiece: Int = 0 }
+struct PendingEnvelope: Codable, Identifiable { var id: String {envelope.id}; let recipient: String; let envelope: Envelope; var nextPiece: Int = 0; var silent: Bool? }
 struct CipherPiece: Codable { let id: String; let index: Int; let total: Int; let body: String }
 struct ChunkReply: Decodable { let ok: Bool; let complete: Bool }
 struct DownloadPiece: Decodable { let body: String }
 struct Inbox: Codable { let messages: [Envelope]; var peerOnline: Bool? }
-struct State: Codable { var account: Account?; var peer: Invite?; var messages: [Message] = []; var profile = Profile(); var remoteProfile = Profile(name: "Собеседник"); var server = Deployment.serverURL; var relayAccessKey: String?; var archived: Bool?; var lastReadAt: Date?; var automaticEndpoint: Bool?; var lastEndpointIssuedAt: TimeInterval?; var outbox: [PendingEnvelope]?; var lastProfileHash: String?; var remoteProfileDate: Date? }
+struct State: Codable { var account: Account?; var peer: Invite?; var messages: [Message] = []; var profile = Profile(); var remoteProfile = Profile(name: "Собеседник"); var server = Deployment.serverURL; var relayAccessKey: String?; var archived: Bool?; var lastReadAt: Date?; var automaticEndpoint: Bool?; var lastEndpointIssuedAt: TimeInterval?; var outbox: [PendingEnvelope]?; var lastProfileHash: String?; var remoteProfileDate: Date?; var pendingChanges: [String:Message]?; var profilePublishedAt: Date? }
 
 enum Vault {
     static func key(_ name: String, create: () -> Data) throws -> Data {
@@ -47,6 +49,7 @@ enum Vault {
     private var nextSendAttempt=Date.distantPast
     private var retryCount=0
     private var publishingProfile=false
+    private var checkedProfile: Profile?
     private var downloads: [String:[Int:String]] = [:]
     private var recorder: AVAudioRecorder?
     private var player: AVAudioPlayer?
@@ -203,7 +206,7 @@ enum Vault {
         let custom=state.relayAccessKey?.trimmingCharacters(in:.whitespacesAndNewlines) ?? ""
         return custom.isEmpty ? Deployment.accessKey:custom
     }
-    var unreadCount: Int { state.messages.filter { !$0.mine && $0.kind != "profile" && $0.date > (state.lastReadAt ?? .distantPast) }.count }
+    var unreadCount: Int { state.messages.filter { !$0.mine && $0.visible && $0.date > (state.lastReadAt ?? .distantPast) }.count }
     func markRead() { state.lastReadAt=Date(); persist() }
     func archive(_ value: Bool) { state.archived=value; persist() }
     var invitation: String {
@@ -230,12 +233,16 @@ enum Vault {
         let keys=[identity.publicKey.rawRepresentation.base64EncodedString(),peer.key.base64EncodedString()].sorted().joined()
         return SHA256.hash(data:Data(keys.utf8)).map { String(format:"%02x",$0) }.joined()
     }
-    @discardableResult func send(text: String = "", kind: String = "text", data: Data? = nil) async -> Bool {
+    @discardableResult func send(text: String = "", kind: String = "text", data: Data? = nil, target: String? = nil) async -> Bool {
         guard !busy,!previewMode,let peer=state.peer else {return false}
         do {
             guard (state.outbox?.count ?? 0)<50 else {throw NSError(domain:"stupidchat",code:1,userInfo:[NSLocalizedDescriptionKey:"Сначала дождитесь отправки сообщений из очереди"])}
             if let data,data.count>18*1024*1024 {throw NSError(domain:"Вложение больше 18 МБ",code:1)}
-            var message=Message(text:text,kind:kind,data:data)
+            var message=Message(text:text,kind:kind,data:data,target:target)
+            if let target {
+                guard let original=state.messages.first(where:{$0.id==target}),original.mine,original.visible,
+                      kind=="delete" || (kind=="edit" && original.kind=="text" && !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty) else {return false}
+            }
             // Ordinary text must never carry profile images or a banner.
             if kind == "profile" {message.profile=state.profile}
             let plain=try JSONEncoder().encode(message)
@@ -243,13 +250,32 @@ enum Vault {
             let body=try ChaChaPoly.seal(plain,using:sharedKey(),authenticating:Data(message.id.utf8)).combined.base64EncodedString()
             let original=state
             message.profile=nil;message.delivery="pending"
-            state.messages.append(message)
+            if target != nil { applyChange(message) } else {state.messages.append(message)}
             if state.outbox == nil {state.outbox=[]}
-            state.outbox?.append(PendingEnvelope(recipient:peer.id,envelope:Envelope(id:message.id,body:body)))
+            state.outbox?.append(PendingEnvelope(recipient:peer.id,envelope:Envelope(id:message.id,body:body),silent:target != nil || kind=="profile"))
             do {try save()} catch {state=original;throw error}
             Task {await flushOutbox()}
             return true
         } catch {self.error="Не удалось подготовить сообщение. \(error.localizedDescription)";return false}
+    }
+    func applyChange(_ event: Message) {
+        guard let target=event.target, event.kind=="edit" || event.kind=="delete" else {return}
+        guard let index=state.messages.firstIndex(where:{$0.id==target}) else {
+            if let previous=state.pendingChanges?[target],previous.kind=="delete" || (event.kind=="edit" && previous.date>=event.date) {return}
+            if state.pendingChanges == nil {state.pendingChanges=[:]}
+            state.pendingChanges?[target]=event
+            return
+        }
+        let original=state.messages[index]
+        guard original.mine==event.mine,original.visible else {return}
+        if event.kind=="delete" {
+            state.messages[index].deleted=true
+            state.messages[index].text=""
+            state.messages[index].data=nil
+        } else if original.kind=="text",event.date >= (original.edited ?? .distantPast) {
+            state.messages[index].text=event.text
+            state.messages[index].edited=event.date
+        }
     }
     func flushOutbox() async {
         if let running=outboxTask {await running.value;return}
@@ -262,7 +288,7 @@ enum Vault {
         // Re-evaluate priority after every piece, so text can pass a large profile upload.
         while let pending=state.outbox?.min(by:{$0.envelope.body.count<$1.envelope.body.count}) {
             do {
-                let quiet = state.messages.contains {$0.id == pending.id && $0.kind == "profile"}
+                let quiet = pending.silent == true || state.messages.contains {$0.id == pending.id && $0.kind == "profile"}
                 let options = quiet ? [URLQueryItem(name:"silent",value:"1")] : []
                 let complete: Bool
                 if pending.envelope.body.utf8.count<=32768 {
@@ -295,14 +321,17 @@ enum Vault {
     }
     func publishProfileIfNeeded(force: Bool = false) async {
         guard !previewMode,!publishingProfile,state.peer != nil else {return}
+        let refresh = Date().timeIntervalSince(state.profilePublishedAt ?? .distantPast) > 86400
+        if !force && !refresh && checkedProfile == state.profile {return}
         publishingProfile=true;defer {publishingProfile=false}
         state.profile.avatar=Self.optimizedImage(state.profile.avatar,maxDimension:320,targetBytes:128*1024,preserveGIF:true)
         state.profile.banner=Self.optimizedImage(state.profile.banner,maxDimension:960,targetBytes:192*1024,preserveGIF:false)
         let encoder=JSONEncoder();encoder.outputFormatting = .sortedKeys
         guard let data=try? encoder.encode(state.profile) else {return}
         let hash=SHA256.hash(data:data).map {String(format:"%02x",$0)}.joined()
-        guard force || hash != state.lastProfileHash else {return}
-        if await send(kind:"profile") {state.lastProfileHash=hash;persist()}
+        guard refresh || force || hash != state.lastProfileHash else {checkedProfile=state.profile;return}
+        let snapshot=state.profile
+        if await send(kind:"profile") {state.lastProfileHash=hash;checkedProfile=snapshot;state.profilePublishedAt=Date();persist()}
     }
     static func optimizedImage(_ data: Data?,maxDimension: CGFloat,targetBytes: Int,preserveGIF: Bool) -> Data? {
         guard let data else {return nil}
@@ -316,7 +345,7 @@ enum Vault {
     }
     func poll() async {
         guard !previewMode,!busy else {return}
-        if state.lastProfileHash == nil {await publishProfileIfNeeded()}
+        await publishProfileIfNeeded()
         Task {await flushOutbox()}
         guard let account=state.account,let peer=state.peer else {
             do {
@@ -355,7 +384,13 @@ enum Vault {
                 guard message.id==envelope.id else {continue}
                 message.mine=false;message.delivery=nil
                 if let profile=message.profile,message.date >= (state.remoteProfileDate ?? .distantPast) {state.remoteProfile=profile;state.remoteProfileDate=message.date}
-                message.profile=nil;state.messages.append(message);ids.append(envelope.id);downloads.removeValue(forKey:envelope.id);attachmentProgress=downloads.isEmpty ? nil:attachmentProgress;changed=true
+                message.profile=nil
+                if message.kind=="edit" || message.kind=="delete" {applyChange(message)}
+                else {
+                    state.messages.append(message)
+                    if let change=state.pendingChanges?.removeValue(forKey:message.id) {applyChange(change)}
+                }
+                ids.append(envelope.id);downloads.removeValue(forKey:envelope.id);attachmentProgress=downloads.isEmpty ? nil:attachmentProgress;changed=true
             }
             if changed {state.messages.sort {$0.date<$1.date}}
             if !ids.isEmpty {try save();let _: OK=try await request("ack/\(account.id)",body:JSONEncoder().encode(["ids":ids]))}

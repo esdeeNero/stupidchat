@@ -3,6 +3,25 @@ import CryptoKit
 @testable import StupidChat
 
 @MainActor final class DeliveryTests: XCTestCase {
+    func testChangesRespectAuthorAndDeletionWins() {
+        let chat=Chat(preview:true)
+        let original=Message(text:"before",mine:false)
+        chat.state.messages=[original]
+        var edit=Message(text:"after",kind:"edit",mine:true,target:original.id)
+        chat.applyChange(edit)
+        XCTAssertEqual(chat.state.messages[0].text,"before")
+        edit.mine=false
+        chat.applyChange(edit)
+        XCTAssertEqual(chat.state.messages[0].text,"after")
+        chat.applyChange(Message(kind:"delete",mine:false,target:original.id))
+        chat.applyChange(edit)
+        XCTAssertFalse(chat.state.messages[0].visible)
+        XCTAssertEqual(chat.state.messages[0].text,"")
+        let future=UUID().uuidString
+        chat.applyChange(Message(kind:"delete",mine:false,target:future))
+        chat.applyChange(Message(text:"late",kind:"edit",mine:false,target:future))
+        XCTAssertEqual(chat.state.pendingChanges?[future]?.kind,"delete")
+    }
     func testOutboxPersistsAndResumesAfterNetworkFailure() async throws {
         let chat=Chat(),original=Chat().state
         defer {chat.state=original;chat.persist()}
