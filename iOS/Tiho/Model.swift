@@ -11,12 +11,12 @@ struct Message: Codable, Identifiable { var id = UUID().uuidString; var text = "
 }
 struct Account: Codable { let id: String; let token: String }
 struct Envelope: Codable { let id: String; let body: String; var parts: Int? }
-struct PendingEnvelope: Codable, Identifiable { var id: String {envelope.id}; let recipient: String; let envelope: Envelope; var nextPiece: Int = 0; var silent: Bool? }
+struct PendingEnvelope: Codable, Identifiable { var id: String {envelope.id}; let recipient: String; let envelope: Envelope; var nextPiece: Int = 0; var silent: Bool?; var pieceSize: Int? }
 struct CipherPiece: Codable { let id: String; let index: Int; let total: Int; let body: String }
 struct ChunkReply: Decodable { let ok: Bool; let complete: Bool }
 struct DownloadPiece: Decodable { let body: String }
 struct Inbox: Codable { let messages: [Envelope]; var peerOnline: Bool? }
-struct State: Codable { var account: Account?; var peer: Invite?; var messages: [Message] = []; var profile = Profile(); var remoteProfile = Profile(name: "Собеседник"); var server = Deployment.serverURL; var relayAccessKey: String?; var archived: Bool?; var lastReadAt: Date?; var automaticEndpoint: Bool?; var lastEndpointIssuedAt: TimeInterval?; var outbox: [PendingEnvelope]?; var lastProfileHash: String?; var remoteProfileDate: Date?; var pendingChanges: [String:Message]?; var profilePublishedAt: Date? }
+struct State: Codable { var account: Account?; var peer: Invite?; var messages: [Message] = []; var profile = Profile(); var remoteProfile = Profile(name: "Собеседник"); var server = Deployment.serverURL; var relayAccessKey: String?; var archived: Bool?; var lastReadAt: Date?; var automaticEndpoint: Bool?; var lastEndpointIssuedAt: TimeInterval?; var outbox: [PendingEnvelope]?; var lastProfileHash: String?; var remoteProfileDate: Date?; var pendingChanges: [String:Message]?; var profilePublishedAt: Date?; var profileTransferVersion: Int? }
 
 enum Vault {
     static func key(_ name: String, create: () -> Data) throws -> Data {
@@ -236,7 +236,8 @@ enum Vault {
     @discardableResult func send(text: String = "", kind: String = "text", data: Data? = nil, target: String? = nil) async -> Bool {
         guard !busy,!previewMode,let peer=state.peer else {return false}
         do {
-            guard (state.outbox?.count ?? 0)<50 else {throw NSError(domain:"stupidchat",code:1,userInfo:[NSLocalizedDescriptionKey:"Сначала дождитесь отправки сообщений из очереди"])}
+            let obsolete = kind == "profile" ? pendingProfileIDs : []
+            guard (state.outbox?.filter { !obsolete.contains($0.id) }.count ?? 0)<50 else {throw NSError(domain:"stupidchat",code:1,userInfo:[NSLocalizedDescriptionKey:"Сначала дождитесь отправки сообщений из очереди"])}
             if let data,data.count>18*1024*1024 {throw NSError(domain:"Вложение больше 18 МБ",code:1)}
             var message=Message(text:text,kind:kind,data:data,target:target)
             if let target {
@@ -249,10 +250,14 @@ enum Vault {
             guard plain.count<=20*1024*1024 else {throw NSError(domain:"Сообщение больше 20 МБ",code:1)}
             let body=try ChaChaPoly.seal(plain,using:sharedKey(),authenticating:Data(message.id.utf8)).combined.base64EncodedString()
             let original=state
+            if !obsolete.isEmpty {
+                state.outbox?.removeAll {obsolete.contains($0.id)}
+                state.messages.removeAll {obsolete.contains($0.id)}
+            }
             message.profile=nil;message.delivery="pending"
             if target != nil { applyChange(message) } else {state.messages.append(message)}
             if state.outbox == nil {state.outbox=[]}
-            state.outbox?.append(PendingEnvelope(recipient:peer.id,envelope:Envelope(id:message.id,body:body),silent:target != nil || kind=="profile"))
+            state.outbox?.append(PendingEnvelope(recipient:peer.id,envelope:Envelope(id:message.id,body:body),silent:target != nil || kind=="profile",pieceSize:kind=="profile" ? 8192:nil))
             do {try save()} catch {state=original;throw error}
             Task {await flushOutbox()}
             return true
@@ -291,12 +296,13 @@ enum Vault {
                 let quiet = pending.silent == true || state.messages.contains {$0.id == pending.id && $0.kind == "profile"}
                 let options = quiet ? [URLQueryItem(name:"silent",value:"1")] : []
                 let complete: Bool
-                if pending.envelope.body.utf8.count<=32768 {
+                let size=pending.pieceSize ?? 32768
+                if pending.envelope.body.utf8.count<=size {
                     let _: OK=try await request("send/\(pending.recipient)",body:JSONEncoder().encode(pending.envelope),query:options);complete=true
                 } else {
-                    let bytes=Array(pending.envelope.body.utf8),total=(bytes.count+32767)/32768
+                    let bytes=Array(pending.envelope.body.utf8),total=(bytes.count+size-1)/size
                     let index=min(pending.nextPiece,total-1)
-                    let start=index*32768,end=min(start+32768,bytes.count)
+                    let start=index*size,end=min(start+size,bytes.count)
                     let piece=CipherPiece(id:pending.id,index:index,total:total,body:String(decoding:bytes[start..<end],as:UTF8.self))
                     let result: ChunkReply=try await request("chunk/\(pending.recipient)",body:JSONEncoder().encode(piece),query:options);complete=result.complete
                     if !complete,let index=state.outbox?.firstIndex(where:{$0.id==pending.id}) {state.outbox?[index].nextPiece = pending.nextPiece+1 < total ? pending.nextPiece+1:0}
@@ -313,15 +319,19 @@ enum Vault {
             }
         }
     }
+    private var pendingProfileIDs: Set<String> {
+        Set(state.messages.filter {$0.kind=="profile" && $0.delivery=="pending"}.map(\.id))
+    }
     var profileUploadProgress: Double? {
         let profileIDs=Set(state.messages.filter {$0.kind == "profile"}.map(\.id))
         guard let pending=state.outbox?.last(where:{profileIDs.contains($0.id)}) else {return nil}
-        let count=max(1,(pending.envelope.body.utf8.count+32767)/32768)
+        let size=pending.pieceSize ?? 32768
+        let count=max(1,(pending.envelope.body.utf8.count+size-1)/size)
         return Double(pending.nextPiece)/Double(count)
     }
     func publishProfileIfNeeded(force: Bool = false) async {
         guard !previewMode,!publishingProfile,state.peer != nil else {return}
-        let refresh = Date().timeIntervalSince(state.profilePublishedAt ?? .distantPast) > 86400
+        let refresh = state.profileTransferVersion != 2 || Date().timeIntervalSince(state.profilePublishedAt ?? .distantPast) > 86400
         if !force && !refresh && checkedProfile == state.profile {return}
         publishingProfile=true;defer {publishingProfile=false}
         state.profile.avatar=Self.optimizedImage(state.profile.avatar,maxDimension:320,targetBytes:128*1024,preserveGIF:true)
@@ -329,9 +339,13 @@ enum Vault {
         let encoder=JSONEncoder();encoder.outputFormatting = .sortedKeys
         guard let data=try? encoder.encode(state.profile) else {return}
         let hash=SHA256.hash(data:data).map {String(format:"%02x",$0)}.joined()
+        if !refresh && hash==state.lastProfileHash && !pendingProfileIDs.isEmpty {
+            checkedProfile=state.profile
+            Task { await flushOutbox() }; return
+        }
         guard refresh || force || hash != state.lastProfileHash else {checkedProfile=state.profile;return}
         let snapshot=state.profile
-        if await send(kind:"profile") {state.lastProfileHash=hash;checkedProfile=snapshot;state.profilePublishedAt=Date();persist()}
+        if await send(kind:"profile") {state.lastProfileHash=hash;checkedProfile=snapshot;state.profilePublishedAt=Date();state.profileTransferVersion=2;persist()}
     }
     static func optimizedImage(_ data: Data?,maxDimension: CGFloat,targetBytes: Int,preserveGIF: Bool) -> Data? {
         guard let data else {return nil}

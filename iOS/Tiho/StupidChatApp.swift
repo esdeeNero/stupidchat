@@ -395,7 +395,7 @@ struct SettingsView: View {
                 Section {
                     HStack(spacing:14) {
                         Image("StupidLogo").resizable().frame(width:46,height:46).clipShape(RoundedRectangle(cornerRadius:11))
-                        VStack(alignment:.leading,spacing:4) {Text("stupidchat").font(.headline);Text("Версия 0.4.1").font(.caption).foregroundStyle(.secondary)}
+                        VStack(alignment:.leading,spacing:4) {Text("stupidchat").font(.headline);Text("Версия 0.4.2").font(.caption).foregroundStyle(.secondary)}
                     }.padding(.vertical,4)
                     Text("Переписка загружается при открытии приложения.").font(.caption).foregroundStyle(.secondary)
                 }
@@ -421,7 +421,7 @@ struct EditProfileView: View {
             Section {
                 PhotosPicker("Фото или GIF на аватарку",selection:$avatar,matching:.images)
                 PhotosPicker("Изменить баннер",selection:$banner,matching:.images)
-                if let progress=chat.profileUploadProgress {ProgressView("Синхронизация профиля…",value:progress).font(.caption)}
+                if let progress=chat.profileUploadProgress {ProgressView(progress == 0 ? "Ожидаем подтверждения первой части" : "Отправка профиля · " + progress.formatted(.percent),value:progress).font(.caption)}
                 Button("Отправить обновлённый профиль") {Task {await chat.publishProfileIfNeeded(force:true)}}.disabled(chat.state.peer == nil || chat.busy)
             }
         }.navigationTitle("Мой профиль").navigationBarTitleDisplayMode(.inline)
