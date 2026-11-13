@@ -42,7 +42,10 @@ struct Avatar: View {
         ZStack {
             LinearGradient(colors:[accent,Color(red:0.48,green:0.39,blue:0.84)],startPoint:.topLeading,endPoint:.bottomTrailing)
             Text(String(profile.name.prefix(1)).uppercased()).font(.system(size:size*0.40,weight:.semibold)).foregroundStyle(.white)
-            if let data=profile.avatar { AnimatedImage(data:data).id(data.hashValue) }
+            if let data=profile.avatar {
+                if String(data:data.prefix(3),encoding:.ascii)=="GIF" {AnimatedImage(data:data).id(data.hashValue)}
+                else if let image=UIImage(data:data) {Image(uiImage:image).resizable().scaledToFill()}
+            }
         }.frame(width:size,height:size).clipShape(Circle()).accessibilityLabel("Аватар: \(profile.name)")
     }
 }
@@ -137,7 +140,7 @@ struct ConversationRow: View {
                 HStack {
                     Text(chat.state.remoteProfile.name).font(.headline).lineLimit(1)
                     Spacer()
-                    if let last=chat.state.messages.last { Text(last.date,style:.time).font(.caption).foregroundStyle(.secondary) }
+                    if let last=chat.state.messages.last(where:{$0.kind != "profile"}) { Text(last.date,style:.time).font(.caption).foregroundStyle(.secondary) }
                 }
                 HStack(alignment:.top) {
                     Text(preview).font(.subheadline).foregroundStyle(.secondary).lineLimit(2).frame(maxWidth:.infinity,alignment:.leading)
@@ -147,7 +150,7 @@ struct ConversationRow: View {
         }.padding(.vertical,6)
     }
     private var preview: String {
-        guard let last=chat.state.messages.last else { return "Написать сообщение" }
+        guard let last=chat.state.messages.last(where:{$0.kind != "profile"}) else { return "Написать сообщение" }
         let value: String
         switch last.kind { case "photo": value="📷 Фото"; case "video":value="📹 Видео"; case "voice":value="🎤 Голосовое сообщение"; case "profile":value="Профиль обновлён"; default:value=last.text }
         return (last.mine ? "Вы: ":"")+value
@@ -162,7 +165,7 @@ struct ContactsView: View {
             List {
                 Button { add=true } label: { Label("Добавить по приглашению",systemImage:"person.badge.plus") }
                 if chat.state.peer != nil && (search.isEmpty || chat.state.remoteProfile.name.localizedCaseInsensitiveContains(search)) {
-                    NavigationLink { PeerProfileView(profile:chat.state.remoteProfile) } label: {
+                    NavigationLink { PeerProfileView() } label: {
                         HStack(spacing:14) { Avatar(profile:chat.state.remoteProfile); VStack(alignment:.leading,spacing:4) { Text(chat.state.remoteProfile.name).font(.headline); Text(chat.state.remoteProfile.bio).font(.caption).foregroundStyle(.secondary).lineLimit(1) } }
                     }
                 } else { Text("Контакты появятся после обмена приглашениями.").font(.subheadline).foregroundStyle(.secondary) }
@@ -211,8 +214,8 @@ struct ConversationView: View {
                             }
                         }.padding(.horizontal,10).padding(.bottom,12)
                     }.scrollDismissesKeyboard(.interactively)
-                        .onAppear { if let id=chat.state.messages.last?.id { proxy.scrollTo(id,anchor:.bottom) }; chat.markRead() }
-                        .onChange(of:chat.state.messages.count) { _,_ in if let id=chat.state.messages.last?.id { withAnimation {proxy.scrollTo(id,anchor:.bottom)} }; chat.markRead() }
+                        .onAppear { if let id=chat.state.messages.last(where:{$0.kind != "profile"})?.id { proxy.scrollTo(id,anchor:.bottom) }; chat.markRead() }
+                        .onChange(of:chat.state.messages.count) { _,_ in if let id=chat.state.messages.last(where:{$0.kind != "profile"})?.id { withAnimation {proxy.scrollTo(id,anchor:.bottom)} }; chat.markRead() }
                 }
             }
         }
@@ -231,7 +234,7 @@ struct ConversationView: View {
             ToolbarItem(placement:.topBarTrailing) { Button {profile=true} label: {Avatar(profile:chat.state.remoteProfile,size:34)}.accessibilityLabel("Профиль собеседника") }
             ToolbarItem(placement:.topBarTrailing) { Button {searching.toggle(); if !searching {search=""}} label: {Image(systemName:"magnifyingglass")}.accessibilityLabel("Поиск в переписке") }
         }
-        .sheet(isPresented:$profile) { NavigationStack { PeerProfileView(profile:chat.state.remoteProfile) } }
+        .sheet(isPresented:$profile) { NavigationStack { PeerProfileView() } }
         .sheet(isPresented:$showVideo,onDismiss:{if let preview {try? FileManager.default.removeItem(at:preview)};preview=nil}) { if let preview { VideoPlayer(player:AVPlayer(url:preview)).ignoresSafeArea() } }
         .onChange(of:selection) { _,item in Task { do { if let data=try await item?.loadTransferable(type:Data.self) { await chat.send(kind:item?.supportedContentTypes.contains(where:{$0.conforms(to:.movie)}) == true ? "video":"photo",data:data) } } catch {chat.error=error.localizedDescription};selection=nil } }
         .fileImporter(isPresented:$filePicker,allowedContentTypes:[.image,.movie]) { result in
@@ -242,7 +245,7 @@ struct ConversationView: View {
             } catch {chat.error=error.localizedDescription}
         }
     }
-    private var visibleMessages: [Message] { search.isEmpty ? chat.state.messages:chat.state.messages.filter {$0.text.localizedCaseInsensitiveContains(search)} }
+    private var visibleMessages: [Message] {chat.state.messages.filter {$0.kind != "profile" && (search.isEmpty || $0.text.localizedCaseInsensitiveContains(search))}}
     private var composer: some View {
         VStack(spacing:0) {
             if chat.recording { Text("● Запись · нажмите стоп для отправки").font(.caption).foregroundStyle(.red).padding(.top,8) }
@@ -255,7 +258,7 @@ struct ConversationView: View {
                 if text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty {
                     Button {Task {await chat.toggleRecording()}} label: {Image(systemName:chat.recording ? "stop.circle.fill":"mic.fill").font(.system(size:25)).frame(width:34,height:40).foregroundStyle(chat.recording ? .red:accent)}.accessibilityLabel(chat.recording ? "Отправить голосовое":"Записать голосовое")
                 } else {
-                    Button {let value=text;Task {await chat.send(text:value);if chat.error.isEmpty {text=""}}} label: {
+                    Button {let value=text;Task {if await chat.send(text:value) {text=""}}} label: {
                         if chat.busy {ProgressView().frame(width:34,height:40)} else {Image(systemName:"arrow.up.circle.fill").font(.system(size:34)).frame(height:40)}
                     }.disabled(chat.busy).accessibilityLabel("Отправить сообщение")
                 }
@@ -291,7 +294,7 @@ struct MessageBubble: View {
                 HStack(spacing:4) {
                     Spacer(minLength:0)
                     Text(message.date,style:.time).font(.system(size:10))
-                    if message.mine {Image(systemName:"checkmark").font(.system(size:10,weight:.semibold)).accessibilityLabel("Принято сервером")}
+                    if message.mine {Image(systemName:message.delivery == "pending" ? "clock":"checkmark").font(.system(size:10,weight:.semibold)).accessibilityLabel(message.delivery == "pending" ? "Ожидает отправки":"Принято сервером")}
                 }.foregroundStyle(.secondary)
             }.padding(.horizontal,11).padding(.vertical,8).frame(maxWidth:285,alignment:.leading)
                 .background(message.mine ? ChatTheme.outgoing:ChatTheme.incoming,in:UnevenRoundedRectangle(topLeadingRadius:17,bottomLeadingRadius:message.mine ? 17:5,bottomTrailingRadius:message.mine ? 5:17,topTrailingRadius:17))
@@ -318,7 +321,7 @@ struct SettingsView: View {
                 Section {
                     HStack(spacing:14) {
                         Image("StupidLogo").resizable().frame(width:46,height:46).clipShape(RoundedRectangle(cornerRadius:11))
-                        VStack(alignment:.leading,spacing:4) {Text("stupidchat").font(.headline);Text("Версия 0.3.1 · made for your people").font(.caption).foregroundStyle(.secondary)}
+                        VStack(alignment:.leading,spacing:4) {Text("stupidchat").font(.headline);Text("Версия 0.3.2 · made for your people").font(.caption).foregroundStyle(.secondary)}
                     }.padding(.vertical,4)
                     Text("Получение работает при открытом приложении. Push-уведомления пока не подключены.").font(.caption).foregroundStyle(.secondary)
                 }
@@ -334,6 +337,7 @@ struct SettingsLabel: View {
 }
 struct EditProfileView: View {
     @EnvironmentObject var chat: Chat
+    @Environment(\.dismiss) private var dismiss
     @State private var avatar: PhotosPickerItem?
     @State private var banner: PhotosPickerItem?
     var body: some View {
@@ -343,12 +347,14 @@ struct EditProfileView: View {
             Section {
                 PhotosPicker("Фото или GIF на аватарку",selection:$avatar,matching:.images)
                 PhotosPicker("Изменить баннер",selection:$banner,matching:.images)
-                Button("Отправить обновлённый профиль") {Task {await chat.send(text:"Обновлён профиль",kind:"profile")}}.disabled(chat.state.peer == nil || chat.busy)
+                if let progress=chat.profileUploadProgress {ProgressView("Синхронизация профиля…",value:progress).font(.caption)}
+                Button("Отправить обновлённый профиль") {Task {await chat.publishProfileIfNeeded(force:true)}}.disabled(chat.state.peer == nil || chat.busy)
             }
         }.navigationTitle("Мой профиль").navigationBarTitleDisplayMode(.inline)
-            .onDisappear {chat.persist()}
-            .onChange(of:avatar) {_,item in Task {if let data=try? await item?.loadTransferable(type:Data.self),data.count<2*1024*1024 {chat.state.profile.avatar=data;chat.persist()} else {chat.error="Аватарка должна быть меньше 2 МБ"}}}
-            .onChange(of:banner) {_,item in Task {if let data=try? await item?.loadTransferable(type:Data.self),data.count<2*1024*1024 {chat.state.profile.banner=data;chat.persist()} else {chat.error="Баннер должен быть меньше 2 МБ"}}}
+            .toolbar {ToolbarItem(placement:.topBarTrailing) {Button("Готово") {chat.persist();Task {await chat.publishProfileIfNeeded()};dismiss()}}}
+            .onDisappear {chat.persist();Task {await chat.publishProfileIfNeeded()}}
+            .onChange(of:avatar) {_,item in Task {if let data=try? await item?.loadTransferable(type:Data.self),data.count<2*1024*1024 {chat.state.profile.avatar=data;chat.persist();await chat.publishProfileIfNeeded()} else {chat.error="Аватарка должна быть меньше 2 МБ"}}}
+            .onChange(of:banner) {_,item in Task {if let data=try? await item?.loadTransferable(type:Data.self),data.count<2*1024*1024 {chat.state.profile.banner=data;chat.persist();await chat.publishProfileIfNeeded()} else {chat.error="Баннер должен быть меньше 2 МБ"}}}
     }
 }
 struct ProfileHeader: View {
@@ -363,10 +369,12 @@ struct ProfileHeader: View {
     }
 }
 struct PeerProfileView: View {
-    let profile: Profile
+    @EnvironmentObject var chat: Chat
+    private var profile: Profile {chat.state.remoteProfile}
     var body: some View {
         List {
             Section {ProfileHeader(profile:profile).listRowInsets(EdgeInsets())}
+            if let progress=chat.attachmentProgress {Section {ProgressView("Получение обновлений…",value:progress)}}
             Section("О себе") {Text(profile.bio)}
             Section {Label("Сквозное шифрование",systemImage:"lock.fill").foregroundStyle(accent)}
         }.navigationTitle(profile.name).navigationBarTitleDisplayMode(.inline)

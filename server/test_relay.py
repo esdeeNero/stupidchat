@@ -29,6 +29,19 @@ class RelayTests(unittest.TestCase):
         self.assertTrue(self.call('session/'+a['id'],token=a['token'])['ok'])
         with self.assertRaises(urllib.error.HTTPError) as error: self.call('session/'+a['id'],token='wrong')
         self.assertEqual(error.exception.code,401); error.exception.close()
+    def test_resumable_pieces_and_ack_receipt(self):
+        a=self.call('register',{});text=base64.b64encode(os.urandom(50000)).decode();pieces=[text[i:i+32768] for i in range(0,len(text),32768)]
+        for index in reversed(range(len(pieces))):
+            part={'id':'pieces','index':index,'total':len(pieces),'body':pieces[index]}
+            self.call('chunk/'+a['id'],part);self.call('chunk/'+a['id'],part)
+        inbox=self.call('inbox/'+a['id']+'?chunked=1',token=a['token'])['messages']
+        self.assertEqual(inbox,[{'id':'pieces','body':'','parts':len(pieces)}])
+        restored=''.join(self.call('piece/'+a['id']+'?message=pieces&index='+str(i),token=a['token'])['body'] for i in range(len(pieces)))
+        self.assertEqual(restored,text)
+        self.call('ack/'+a['id'],{'ids':['pieces']},a['token'])
+        result=self.call('chunk/'+a['id'],{'id':'pieces','index':0,'total':len(pieces),'body':pieces[0]})
+        self.assertTrue(result['complete'])
+        self.assertEqual(self.call('inbox/'+a['id'],token=a['token'])['messages'],[])
     def test_invalid_ciphertext(self):
         a=self.call('register',{})
         with self.assertRaises(urllib.error.HTTPError) as error: self.call('send/'+a['id'],{'id':'bad','body':'!!!'})

@@ -2,14 +2,19 @@ import SwiftUI
 import CryptoKit
 import Security
 import AVFoundation
+import UIKit
 
 struct Profile: Codable { var name = "Я"; var bio = "На связи, в своём ритме"; var avatar: Data?; var banner: Data? }
 struct Invite: Codable { let id: String; let key: Data; let name: String; var server: String? = nil }
-struct Message: Codable, Identifiable { var id = UUID().uuidString; var text = ""; var kind = "text"; var data: Data?; var date = Date(); var mine = true; var profile: Profile? }
+struct Message: Codable, Identifiable { var id = UUID().uuidString; var text = ""; var kind = "text"; var data: Data?; var date = Date(); var mine = true; var profile: Profile?; var delivery: String? }
 struct Account: Codable { let id: String; let token: String }
-struct Envelope: Codable { let id: String; let body: String }
+struct Envelope: Codable { let id: String; let body: String; var parts: Int? }
+struct PendingEnvelope: Codable, Identifiable { var id: String {envelope.id}; let recipient: String; let envelope: Envelope; var nextPiece: Int = 0 }
+struct CipherPiece: Codable { let id: String; let index: Int; let total: Int; let body: String }
+struct ChunkReply: Decodable { let ok: Bool; let complete: Bool }
+struct DownloadPiece: Decodable { let body: String }
 struct Inbox: Codable { let messages: [Envelope] }
-struct State: Codable { var account: Account?; var peer: Invite?; var messages: [Message] = []; var profile = Profile(); var remoteProfile = Profile(name: "Собеседник"); var server = Deployment.serverURL; var relayAccessKey: String?; var archived: Bool?; var lastReadAt: Date?; var automaticEndpoint: Bool?; var lastEndpointIssuedAt: TimeInterval? }
+struct State: Codable { var account: Account?; var peer: Invite?; var messages: [Message] = []; var profile = Profile(); var remoteProfile = Profile(name: "Собеседник"); var server = Deployment.serverURL; var relayAccessKey: String?; var archived: Bool?; var lastReadAt: Date?; var automaticEndpoint: Bool?; var lastEndpointIssuedAt: TimeInterval?; var outbox: [PendingEnvelope]?; var lastProfileHash: String?; var remoteProfileDate: Date? }
 
 enum Vault {
     static func key(_ name: String, create: () -> Data) throws -> Data {
@@ -29,6 +34,7 @@ enum Vault {
     @Published var error = ""
     @Published var busy = false
     @Published var recording = false
+    @Published var attachmentProgress: Double?
     @Published var connection = "Подключение…"
     private var previewMode=false
     private var resolvingEndpoint=false
@@ -36,6 +42,11 @@ enum Vault {
     private var lastEndpointAttempt=Date.distantPast
     private var lastForcedEndpointAttempt=Date.distantPast
     private var lastDiscoveredURL: String?
+    private var outboxTask: Task<Void,Never>?
+    private var nextSendAttempt=Date.distantPast
+    private var retryCount=0
+    private var publishingProfile=false
+    private var downloads: [String:[Int:String]] = [:]
     private var recorder: AVAudioRecorder?
     private var player: AVAudioPlayer?
     private var identity: Curve25519.KeyAgreement.PrivateKey?
@@ -86,7 +97,7 @@ enum Vault {
         config.timeoutIntervalForResource=150
         return URLSession(configuration:config)
     }()
-    func request<T: Decodable>(_ path: String, body: Data? = nil, server: String? = nil) async throws -> T {
+    func request<T: Decodable>(_ path: String, body: Data? = nil, server: String? = nil, query: [URLQueryItem] = []) async throws -> T {
         guard !previewMode else { throw URLError(.notConnectedToInternet) }
         if server == nil { _ = try? await refreshEndpoint(force:path == "register") }
         guard let base=URL(string:server ?? state.server), ["https","http"].contains(base.scheme ?? ""), let host=base.host, base.user == nil, base.password == nil, base.query == nil, base.fragment == nil else { throw URLError(.badURL) }
@@ -95,7 +106,10 @@ enum Vault {
         let privateIPv4=ipv4 && (octets[0]==127 || octets[0]==10 || (octets[0]==192 && octets[1]==168) || (octets[0]==172 && (16...31).contains(octets[1])))
         let local=host=="localhost" || host=="[::1]" || host=="::1" || host.hasSuffix(".local") || privateIPv4
         guard base.scheme=="https" || local else { throw URLError(.appTransportSecurityRequiresSecureConnection) }
-        var req=URLRequest(url:base.appendingPathComponent(path))
+        var components=URLComponents(url:base.appendingPathComponent(path),resolvingAgainstBaseURL:false)!
+        if !query.isEmpty {components.queryItems=query}
+        var req=URLRequest(url:components.url!)
+        req.timeoutInterval=path.hasPrefix("chunk/") || path.hasPrefix("piece/") ? 25:12
         req.httpMethod=body == nil ? "GET":"POST"; req.httpBody=body
         req.setValue("application/json",forHTTPHeaderField:"Content-Type")
         req.setValue(relayAccessKey,forHTTPHeaderField:"X-Tiho-Access")
@@ -113,7 +127,7 @@ enum Vault {
             if server == nil && path != "register" {
                 let previous=state.server
                 if (try? await refreshEndpoint(force:true)) == true && state.server != previous {
-                    return try await request(path,body:body,server:state.server)
+                    return try await request(path,body:body,server:state.server,query:query)
                 }
             }
             connection="Нет связи · повторим автоматически"; throw error
@@ -185,7 +199,7 @@ enum Vault {
         let custom=state.relayAccessKey?.trimmingCharacters(in:.whitespacesAndNewlines) ?? ""
         return custom.isEmpty ? Deployment.accessKey:custom
     }
-    var unreadCount: Int { state.messages.filter { !$0.mine && $0.date > (state.lastReadAt ?? .distantPast) }.count }
+    var unreadCount: Int { state.messages.filter { !$0.mine && $0.kind != "profile" && $0.date > (state.lastReadAt ?? .distantPast) }.count }
     func markRead() { state.lastReadAt=Date(); persist() }
     func archive(_ value: Bool) { state.archived=value; persist() }
     var invitation: String {
@@ -198,7 +212,7 @@ enum Vault {
             let peer=try JSONDecoder().decode(Invite.self,from:data)
             _ = try Curve25519.KeyAgreement.PublicKey(rawRepresentation:peer.key)
             guard peer.id != state.account?.id else { throw URLError(.badURL) }
-            state.peer=peer; state.remoteProfile.name=peer.name; try save()
+            state.peer=peer; state.remoteProfile.name=peer.name; try save(); Task {await publishProfileIfNeeded()}
         } catch { self.error="Неверное приглашение или контакт уже добавлен" }
     }
     func sharedKey() throws -> SymmetricKey {
@@ -212,20 +226,92 @@ enum Vault {
         let keys=[identity.publicKey.rawRepresentation.base64EncodedString(),peer.key.base64EncodedString()].sorted().joined()
         return SHA256.hash(data:Data(keys.utf8)).map { String(format:"%02x",$0) }.joined()
     }
-    func send(text: String = "", kind: String = "text", data: Data? = nil) async {
-        guard !busy, let peer=state.peer else { return }; busy=true; defer {busy=false}
+    @discardableResult func send(text: String = "", kind: String = "text", data: Data? = nil) async -> Bool {
+        guard !busy,!previewMode,let peer=state.peer else {return false}
         do {
-            if let data, data.count>18*1024*1024 { throw NSError(domain:"Вложение больше 18 МБ",code:1) }
-            var message=Message(text:text,kind:kind,data:data); message.profile=state.profile
+            guard (state.outbox?.count ?? 0)<50 else {throw NSError(domain:"stupidchat",code:1,userInfo:[NSLocalizedDescriptionKey:"Сначала дождитесь отправки сообщений из очереди"])}
+            if let data,data.count>18*1024*1024 {throw NSError(domain:"Вложение больше 18 МБ",code:1)}
+            var message=Message(text:text,kind:kind,data:data)
+            // Ordinary text must never carry profile images or a banner.
+            if kind == "profile" {message.profile=state.profile}
             let plain=try JSONEncoder().encode(message)
-            guard plain.count <= 20*1024*1024 else { throw NSError(domain:"Сообщение вместе с профилем больше 20 МБ",code:1) }
+            guard plain.count<=20*1024*1024 else {throw NSError(domain:"Сообщение больше 20 МБ",code:1)}
             let body=try ChaChaPoly.seal(plain,using:sharedKey(),authenticating:Data(message.id.utf8)).combined.base64EncodedString()
-            let _: OK=try await request("send/\(peer.id)",body:JSONEncoder().encode(Envelope(id:message.id,body:body)))
-            message.profile=nil; state.messages.append(message); try save()
-        } catch { self.error="Не удалось отправить. \(error.localizedDescription)" }
+            let original=state
+            message.profile=nil;message.delivery="pending"
+            state.messages.append(message)
+            if state.outbox == nil {state.outbox=[]}
+            state.outbox?.append(PendingEnvelope(recipient:peer.id,envelope:Envelope(id:message.id,body:body)))
+            do {try save()} catch {state=original;throw error}
+            Task {await flushOutbox()}
+            return true
+        } catch {self.error="Не удалось подготовить сообщение. \(error.localizedDescription)";return false}
+    }
+    func flushOutbox() async {
+        if let running=outboxTask {await running.value;return}
+        let task=Task { @MainActor in await self.deliverPending() }
+        outboxTask=task;defer {outboxTask=nil}
+        await task.value
+    }
+    private func deliverPending() async {
+        guard !previewMode,!busy,Date()>=nextSendAttempt else {return}
+        // Re-evaluate priority after every piece, so text can pass a large profile upload.
+        while let pending=state.outbox?.min(by:{$0.envelope.body.count<$1.envelope.body.count}) {
+            do {
+                let complete: Bool
+                if pending.envelope.body.utf8.count<=32768 {
+                    let _: OK=try await request("send/\(pending.recipient)",body:JSONEncoder().encode(pending.envelope));complete=true
+                } else {
+                    let bytes=Array(pending.envelope.body.utf8),total=(bytes.count+32767)/32768
+                    let index=min(pending.nextPiece,total-1)
+                    let start=index*32768,end=min(start+32768,bytes.count)
+                    let piece=CipherPiece(id:pending.id,index:index,total:total,body:String(decoding:bytes[start..<end],as:UTF8.self))
+                    let result: ChunkReply=try await request("chunk/\(pending.recipient)",body:JSONEncoder().encode(piece));complete=result.complete
+                    if !complete,let index=state.outbox?.firstIndex(where:{$0.id==pending.id}) {state.outbox?[index].nextPiece = pending.nextPiece+1 < total ? pending.nextPiece+1:0}
+                }
+                if complete {
+                    state.outbox?.removeAll {$0.id==pending.id}
+                    if let index=state.messages.firstIndex(where:{$0.id==pending.id}) {state.messages[index].delivery=nil}
+                }
+                try save();retryCount=0;nextSendAttempt = .distantPast
+            } catch {
+                retryCount+=1;nextSendAttempt=Date().addingTimeInterval(min(30,pow(2,Double(min(retryCount,4)))))
+                connection="Сообщение в очереди · повторим автоматически"
+                try? save();return
+            }
+        }
+    }
+    var profileUploadProgress: Double? {
+        let profileIDs=Set(state.messages.filter {$0.kind == "profile"}.map(\.id))
+        guard let pending=state.outbox?.last(where:{profileIDs.contains($0.id)}) else {return nil}
+        let count=max(1,(pending.envelope.body.utf8.count+32767)/32768)
+        return Double(pending.nextPiece)/Double(count)
+    }
+    func publishProfileIfNeeded(force: Bool = false) async {
+        guard !previewMode,!publishingProfile,state.peer != nil else {return}
+        publishingProfile=true;defer {publishingProfile=false}
+        state.profile.avatar=Self.optimizedImage(state.profile.avatar,maxDimension:320,targetBytes:128*1024,preserveGIF:true)
+        state.profile.banner=Self.optimizedImage(state.profile.banner,maxDimension:960,targetBytes:192*1024,preserveGIF:false)
+        let encoder=JSONEncoder();encoder.outputFormatting = .sortedKeys
+        guard let data=try? encoder.encode(state.profile) else {return}
+        let hash=SHA256.hash(data:data).map {String(format:"%02x",$0)}.joined()
+        guard force || hash != state.lastProfileHash else {return}
+        if await send(kind:"profile") {state.lastProfileHash=hash;persist()}
+    }
+    static func optimizedImage(_ data: Data?,maxDimension: CGFloat,targetBytes: Int,preserveGIF: Bool) -> Data? {
+        guard let data else {return nil}
+        if preserveGIF && String(data:data.prefix(3),encoding:.ascii)=="GIF" {return data}
+        guard let image=UIImage(data:data) else {return data}
+        let longest=max(image.size.width,image.size.height)
+        if longest<=maxDimension && data.count<=targetBytes {return data}
+        let ratio=min(1,maxDimension/longest),size=CGSize(width:image.size.width*ratio,height:image.size.height*ratio)
+        let format=UIGraphicsImageRendererFormat();format.scale=1;format.opaque=true
+        return UIGraphicsImageRenderer(size:size,format:format).image {_ in image.draw(in:CGRect(origin:.zero,size:size))}.jpegData(compressionQuality:0.72) ?? data
     }
     func poll() async {
         guard !previewMode,!busy else {return}
+        if state.lastProfileHash == nil {await publishProfileIfNeeded()}
+        Task {await flushOutbox()}
         guard let account=state.account,state.peer != nil else {
             do {
                 if let account=state.account {let _: OK=try await request("session/\(account.id)")}
@@ -234,22 +320,40 @@ enum Vault {
             return
         }
         do {
-            let inbox: Inbox=try await request("inbox/\(account.id)")
+            let inbox: Inbox=try await request("inbox/\(account.id)",query:[URLQueryItem(name:"chunked",value:"1")])
             if inbox.messages.isEmpty {return}
-            var ids=[String]()
+            var ids=[String](),changed=false
             for envelope in inbox.messages {
-                if state.messages.contains(where:{$0.id==envelope.id}) { ids.append(envelope.id); continue }
-                guard let data=Data(base64Encoded:envelope.body) else { continue }
+                if state.messages.contains(where:{$0.id==envelope.id}) {ids.append(envelope.id);continue}
+                var body=envelope.body
+                if let count=envelope.parts {
+                    guard (1...2048).contains(count) else {continue}
+                    var pieces=downloads[envelope.id] ?? [:]
+                    let missing=(0..<count).filter {pieces[$0]==nil}.prefix(4)
+                    let fetched=await withTaskGroup(of:(Int,String?).self) {group in
+                        for index in missing {
+                            group.addTask { @MainActor in
+                                let part: DownloadPiece?=try? await self.request("piece/\(account.id)",query:[URLQueryItem(name:"message",value:envelope.id),URLQueryItem(name:"index",value:String(index))])
+                                return (index,part?.body)
+                            }
+                        }
+                        var result=[Int:String]();for await (index,text) in group {if let text {result[index]=text}};return result
+                    }
+                    pieces.merge(fetched) {_,new in new};downloads[envelope.id]=pieces;attachmentProgress=Double(pieces.count)/Double(count)
+                    if pieces.count != count {continue}
+                    body=(0..<count).compactMap {pieces[$0]}.joined()
+                }
+                guard let data=Data(base64Encoded:body) else {continue}
                 let plain=try ChaChaPoly.open(ChaChaPoly.SealedBox(combined:data),using:sharedKey(),authenticating:Data(envelope.id.utf8))
                 var message=try JSONDecoder().decode(Message.self,from:plain)
-                guard message.id==envelope.id else { continue }
-                message.mine=false
-                if let profile=message.profile { state.remoteProfile=profile }; message.profile=nil
-                state.messages.append(message); ids.append(envelope.id)
+                guard message.id==envelope.id else {continue}
+                message.mine=false;message.delivery=nil
+                if let profile=message.profile,message.date >= (state.remoteProfileDate ?? .distantPast) {state.remoteProfile=profile;state.remoteProfileDate=message.date}
+                message.profile=nil;state.messages.append(message);ids.append(envelope.id);downloads.removeValue(forKey:envelope.id);attachmentProgress=downloads.isEmpty ? nil:attachmentProgress;changed=true
             }
-            try save() // Durable local write must precede acknowledgment
-            if !ids.isEmpty { let _: OK=try await request("ack/\(account.id)",body:JSONEncoder().encode(["ids":ids])) }
-        } catch { connection="Нет связи · повторим автоматически" }
+            if changed {state.messages.sort {$0.date<$1.date};try save()}
+            if !ids.isEmpty {let _: OK=try await request("ack/\(account.id)",body:JSONEncoder().encode(["ids":ids]))}
+        } catch {connection="Нет связи · повторим автоматически"}
     }
     func toggleRecording() async {
         if recording {
