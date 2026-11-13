@@ -89,7 +89,14 @@ import CryptoKit
         XCTAssertNil(decoded.profile,"Ordinary messages must not upload avatar/banner")
         XCTAssertLessThan(envelope.body.utf8.count,12000)
         await chat.publishProfileIfNeeded()
-        await chat.flushOutbox()
+        // A public tunnel can time out mid-upload. Exercise the foreground retry path.
+        let deadline=Date().addingTimeInterval(120)
+        repeat {
+            await chat.flushOutbox()
+            if chat.state.outbox?.isEmpty != false {break}
+            try await Task.sleep(for:.seconds(3))
+        } while Date()<deadline
+        XCTAssertTrue(chat.state.outbox?.isEmpty ?? true)
         let (profileBytes,_)=try await URLSession.shared.data(for:req)
         let profiles=try JSONDecoder().decode(Inbox.self,from:profileBytes)
         let profileEnvelope=try XCTUnwrap(profiles.messages.last)
