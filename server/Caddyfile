@@ -1,0 +1,6 @@
+{$TIHO_DOMAIN} {
+    request_body {
+        max_size 28MB
+    }
+    reverse_proxy relay:8787
+}

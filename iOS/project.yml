@@ -1,0 +1,48 @@
+name: Tiho
+options:
+  bundleIdPrefix: app.tiho
+  deploymentTarget:
+    iOS: '17.0'
+targets:
+  Tiho:
+    type: application
+    platform: iOS
+    sources:
+      - path: Tiho
+        excludes: [Connection.local.plist]
+    postBuildScripts:
+      - name: Copy private local connection settings when present
+        script: |
+          target="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Connection.local.plist"
+          if [ -f "$SRCROOT/Tiho/Connection.local.plist" ]; then
+            cp "$SRCROOT/Tiho/Connection.local.plist" "$target"
+          else
+            rm -f "$target"
+          fi
+        basedOnDependencyAnalysis: false
+    info:
+      path: Tiho/Info.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.tiho.privatechat
+        SWIFT_VERSION: '5.0'
+        TARGETED_DEVICE_FAMILY: '1'
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Тихо
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Запись голосовых сообщений
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Подключение к вашему серверу переписки
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  TihoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [TihoTests]
+    dependencies:
+      - target: Tiho
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: '5.0'

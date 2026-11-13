@@ -1,0 +1,430 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2B75B473E74B7A2CB8F8BB65 /* Deployment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69F60349D969AA33542E0DF5 /* Deployment.swift */; };
+		373A0D4C1CED2CAEDD45C9A8 /* DeliveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F75C961AE0CF86985AC67F7 /* DeliveryTests.swift */; };
+		56DD3729F915CEFCF1C176BF /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 912D7A74F261A13ADEC6CE16 /* Model.swift */; };
+		89935DB8DA824737AC7BE0FA /* TihoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D0D869B3E4E13B52399A578 /* TihoApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		6E5DC83C2091751B80EA0619 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9ED17AE3C5EF5D02BDFD4B87 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9FC374F6EFA97FAC1F0DCAB1;
+			remoteInfo = Tiho;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		1D0D869B3E4E13B52399A578 /* TihoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TihoApp.swift; sourceTree = "<group>"; };
+		24645823CDAB3FF3A1E3964E /* TihoTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TihoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		32B1F61E5878397390F4CCDD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		5F75C961AE0CF86985AC67F7 /* DeliveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryTests.swift; sourceTree = "<group>"; };
+		69F60349D969AA33542E0DF5 /* Deployment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deployment.swift; sourceTree = "<group>"; };
+		912D7A74F261A13ADEC6CE16 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
+		C8080493C6A8A919A758C91B /* Tiho.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Tiho.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		2D2046FBCC682C59E8310261 /* Tiho */ = {
+			isa = PBXGroup;
+			children = (
+				69F60349D969AA33542E0DF5 /* Deployment.swift */,
+				32B1F61E5878397390F4CCDD /* Info.plist */,
+				912D7A74F261A13ADEC6CE16 /* Model.swift */,
+				1D0D869B3E4E13B52399A578 /* TihoApp.swift */,
+			);
+			path = Tiho;
+			sourceTree = "<group>";
+		};
+		5949557E805B3624B608DB87 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C8080493C6A8A919A758C91B /* Tiho.app */,
+				24645823CDAB3FF3A1E3964E /* TihoTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6C5B85B52F291E70B28CA7E2 = {
+			isa = PBXGroup;
+			children = (
+				2D2046FBCC682C59E8310261 /* Tiho */,
+				C7694662EBFED36AE30F9520 /* TihoTests */,
+				5949557E805B3624B608DB87 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C7694662EBFED36AE30F9520 /* TihoTests */ = {
+			isa = PBXGroup;
+			children = (
+				5F75C961AE0CF86985AC67F7 /* DeliveryTests.swift */,
+			);
+			path = TihoTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5D704BF6503211254843A497 /* TihoTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9BE7A051CC2C3821D28B7BFA /* Build configuration list for PBXNativeTarget "TihoTests" */;
+			buildPhases = (
+				4D8B9BAA77253E3948369350 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B1C2976922F8AE14EC043E7E /* PBXTargetDependency */,
+			);
+			name = TihoTests;
+			packageProductDependencies = (
+			);
+			productName = TihoTests;
+			productReference = 24645823CDAB3FF3A1E3964E /* TihoTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		9FC374F6EFA97FAC1F0DCAB1 /* Tiho */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B6029991E2D649893CD8ECCC /* Build configuration list for PBXNativeTarget "Tiho" */;
+			buildPhases = (
+				EC940168D5451CD846819345 /* Sources */,
+				D52A6EC0EF651DD9CBCAACEE /* Copy private local connection settings when present */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Tiho;
+			packageProductDependencies = (
+			);
+			productName = Tiho;
+			productReference = C8080493C6A8A919A758C91B /* Tiho.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9ED17AE3C5EF5D02BDFD4B87 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 457C0764C10B125C80F3D76F /* Build configuration list for PBXProject "Tiho" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 6C5B85B52F291E70B28CA7E2;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5949557E805B3624B608DB87 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9FC374F6EFA97FAC1F0DCAB1 /* Tiho */,
+				5D704BF6503211254843A497 /* TihoTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		D52A6EC0EF651DD9CBCAACEE /* Copy private local connection settings when present */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy private local connection settings when present";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "target=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Connection.local.plist\"\nif [ -f \"$SRCROOT/Tiho/Connection.local.plist\" ]; then\n  cp \"$SRCROOT/Tiho/Connection.local.plist\" \"$target\"\nelse\n  rm -f \"$target\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4D8B9BAA77253E3948369350 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				373A0D4C1CED2CAEDD45C9A8 /* DeliveryTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EC940168D5451CD846819345 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2B75B473E74B7A2CB8F8BB65 /* Deployment.swift in Sources */,
+				56DD3729F915CEFCF1C176BF /* Model.swift in Sources */,
+				89935DB8DA824737AC7BE0FA /* TihoApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B1C2976922F8AE14EC043E7E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9FC374F6EFA97FAC1F0DCAB1 /* Tiho */;
+			targetProxy = 6E5DC83C2091751B80EA0619 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		03BBD38E91C2C353989B562D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Tiho/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Тихо";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Подключение к вашему серверу переписки";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Запись голосовых сообщений";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.tiho.privatechat;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		26AEB9002822B939B35C1C05 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		34367CC703D11F92C614FF75 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		768C2E558C2C055366E60A41 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.tiho.TihoTests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tiho.app/Tiho";
+			};
+			name = Release;
+		};
+		7BDBD436F71AAB4BBDC401D0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Tiho/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Тихо";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Подключение к вашему серверу переписки";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Запись голосовых сообщений";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.tiho.privatechat;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		A525A2E442970B6D67B5610F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.tiho.TihoTests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tiho.app/Tiho";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		457C0764C10B125C80F3D76F /* Build configuration list for PBXProject "Tiho" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				26AEB9002822B939B35C1C05 /* Debug */,
+				34367CC703D11F92C614FF75 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9BE7A051CC2C3821D28B7BFA /* Build configuration list for PBXNativeTarget "TihoTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A525A2E442970B6D67B5610F /* Debug */,
+				768C2E558C2C055366E60A41 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B6029991E2D649893CD8ECCC /* Build configuration list for PBXNativeTarget "Tiho" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				03BBD38E91C2C353989B562D /* Debug */,
+				7BDBD436F71AAB4BBDC401D0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9ED17AE3C5EF5D02BDFD4B87 /* Project object */;
+}
